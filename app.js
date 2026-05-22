@@ -105,6 +105,7 @@ const maskCanvas = document.createElement('canvas');
 maskCanvas.width = 1280;
 maskCanvas.height = 720;
 const maskCtx = maskCanvas.getContext('2d');
+let maskImageData = null;
 
 // ---------- State ----------
 const app = {
@@ -118,8 +119,6 @@ const app = {
   wakeLock: null,
   stream: null,
   segmenter: null,
-  segmenterKind: null, // 'tasks' | 'legacy'
-  legacyLatestMask: null,
   audioCtx: null,
 };
 
@@ -301,74 +300,35 @@ cameraSelect?.addEventListener('change', () => {
 const TASKS_VISION_URL =
   'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10/vision_bundle.mjs';
 const MODEL_URL =
-  'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/1/selfie_segmenter.tflite';
+  'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/latest/selfie_multiclass_256x256.tflite';
 const WASM_BASE = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10/wasm';
-const LEGACY_URL =
-  'https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js';
-const LEGACY_BASE = 'https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation';
-
-async function initSegmenterTasks() {
-  const vision = await import(/* @vite-ignore */ TASKS_VISION_URL);
-  const { FilesetResolver, ImageSegmenter } = vision;
-  const fileset = await FilesetResolver.forVisionTasks(WASM_BASE);
-  const segmenter = await ImageSegmenter.createFromOptions(fileset, {
-    baseOptions: {
-      modelAssetPath: MODEL_URL,
-      delegate: 'GPU',
-    },
-    runningMode: 'VIDEO',
-    // Confidence mask gives a smooth 0..1 gradient at the silhouette edge instead
-    // of a hard binary cut — much cleaner composite, less haloing.
-    outputCategoryMask: false,
-    outputConfidenceMasks: true,
-  });
-  app.segmenter = segmenter;
-  app.segmenterKind = 'tasks';
-}
-
-function loadScript(src) {
-  return new Promise((resolve, reject) => {
-    const s = document.createElement('script');
-    s.src = src;
-    s.crossOrigin = 'anonymous';
-    s.onload = resolve;
-    s.onerror = reject;
-    document.head.appendChild(s);
-  });
-}
-
-async function initSegmenterLegacy() {
-  await loadScript(LEGACY_URL);
-  // global: SelfieSegmentation
-  const seg = new window.SelfieSegmentation({
-    locateFile: (file) => `${LEGACY_BASE}/${file}`,
-  });
-  seg.setOptions({ modelSelection: 1, selfieMode: false });
-  seg.onResults((res) => {
-    // res.segmentationMask is a HTMLCanvasElement/ImageBitmap-like mask (white = person).
-    app.legacyLatestMask = res.segmentationMask;
-  });
-  await seg.initialize?.();
-  app.segmenter = seg;
-  app.segmenterKind = 'legacy';
-}
 
 async function initSegmenter() {
   try {
-    await initSegmenterTasks();
+    const vision = await import(/* @vite-ignore */ TASKS_VISION_URL);
+    const { FilesetResolver, ImageSegmenter } = vision;
+    const fileset = await FilesetResolver.forVisionTasks(WASM_BASE);
+    app.segmenter = await ImageSegmenter.createFromOptions(fileset, {
+      baseOptions: {
+        modelAssetPath: MODEL_URL,
+        delegate: 'GPU',
+      },
+      runningMode: 'VIDEO',
+      // Multiclass uses softmax across 6 channels, so confidence values for
+      // background rarely reach 1.0 even on clean background pixels. Use the
+      // categoryMask (per-pixel integer class) for a definitive person/not-
+      // person cut; the blur during upscale gives us soft edges.
+      outputCategoryMask: true,
+      outputConfidenceMasks: false,
+    });
   } catch (e) {
-    console.warn('tasks-vision segmenter failed, falling back to legacy', e);
-    try {
-      await initSegmenterLegacy();
-    } catch (e2) {
-      console.error('Both segmenters failed', e2);
-      showSidebarError('Background segmentation unavailable. Try Chrome 113+.');
-    }
+    console.error('Segmenter init failed', e);
+    showSidebarError('Background segmentation unavailable. Try Chrome 113+.');
   }
 }
 
-// Run a frame through whichever segmenter is active. Mutates fgCanvas to be the
-// foreground (segmented person) on a transparent background, sized 1280x720.
+// Run a frame through the tasks-vision multiclass segmenter. Mutates fgCanvas
+// to be the foreground (segmented person) on a transparent background.
 async function segmentFrame(video, tMs) {
   if (!app.segmenter) {
     // No segmenter: draw raw video (no background removal).
@@ -377,61 +337,50 @@ async function segmentFrame(video, tMs) {
     return;
   }
 
-  if (app.segmenterKind === 'tasks') {
-    const result = app.segmenter.segmentForVideo(video, tMs);
-    const mask = result?.confidenceMasks?.[0];
-    if (!mask) {
-      result?.close?.();
-      return;
-    }
-    const w = mask.width;
-    const h = mask.height;
-    // selfie_segmenter confidence mask: values 0..1 represent per-pixel confidence
-    // the pixel is *background* in the .tflite asset we load (matches our earlier
-    // categoryMask=0-is-person empirical finding — the model emits inverted scores).
-    // So alpha for the person mask is (1 - conf).
-    const data = mask.getAsFloat32Array();
-    if (maskCanvas.width !== w || maskCanvas.height !== h) {
-      maskCanvas.width = w;
-      maskCanvas.height = h;
-    }
-    const imgData = maskCtx.createImageData(w, h);
-    const px = imgData.data;
-    for (let i = 0, j = 0; i < data.length; i++, j += 4) {
-      const a = Math.round((1 - data[i]) * 255);
-      px[j] = 255;
-      px[j + 1] = 255;
-      px[j + 2] = 255;
-      px[j + 3] = a;
-    }
-    maskCtx.putImageData(imgData, 0, 0);
-
-    // Build foreground: draw video, then keep only mask region. A small blur
-    // when scaling the mask up softens any residual aliasing along the silhouette.
-    fgCtx.save();
-    fgCtx.globalCompositeOperation = 'source-over';
-    fgCtx.clearRect(0, 0, fgCanvas.width, fgCanvas.height);
-    fgCtx.drawImage(video, 0, 0, fgCanvas.width, fgCanvas.height);
-    fgCtx.globalCompositeOperation = 'destination-in';
-    fgCtx.filter = 'blur(2px)';
-    fgCtx.drawImage(maskCanvas, 0, 0, fgCanvas.width, fgCanvas.height);
-    fgCtx.filter = 'none';
-    fgCtx.restore();
-
-    result.close?.();
-  } else if (app.segmenterKind === 'legacy') {
-    await app.segmenter.send({ image: video });
-    const mask = app.legacyLatestMask;
-    fgCtx.save();
-    fgCtx.globalCompositeOperation = 'source-over';
-    fgCtx.clearRect(0, 0, fgCanvas.width, fgCanvas.height);
-    fgCtx.drawImage(video, 0, 0, fgCanvas.width, fgCanvas.height);
-    if (mask) {
-      fgCtx.globalCompositeOperation = 'destination-in';
-      fgCtx.drawImage(mask, 0, 0, fgCanvas.width, fgCanvas.height);
-    }
-    fgCtx.restore();
+  const result = app.segmenter.segmentForVideo(video, tMs);
+  // selfie_multiclass classes: 0=background, 1=hair, 2=body-skin, 3=face-skin,
+  // 4=clothes, 5=others. Anything non-zero is person.
+  const catMask = result?.categoryMask;
+  if (!catMask) {
+    result?.close?.();
+    return;
   }
+  const w = catMask.width;
+  const h = catMask.height;
+  const data = catMask.getAsUint8Array();
+  if (maskCanvas.width !== w || maskCanvas.height !== h) {
+    maskCanvas.width = w;
+    maskCanvas.height = h;
+    maskImageData = null;
+  }
+  if (!maskImageData) {
+    maskImageData = maskCtx.createImageData(w, h);
+    const px0 = maskImageData.data;
+    for (let j = 0; j < px0.length; j += 4) {
+      px0[j] = 255;
+      px0[j + 1] = 255;
+      px0[j + 2] = 255;
+    }
+  }
+  const px = maskImageData.data;
+  for (let i = 0, j = 3; i < data.length; i++, j += 4) {
+    px[j] = data[i] === 0 ? 0 : 255;
+  }
+  maskCtx.putImageData(maskImageData, 0, 0);
+
+  // Build foreground: draw video, then keep only mask region. A 1px blur on the
+  // upscaled mask softens aliasing without smearing the silhouette.
+  fgCtx.save();
+  fgCtx.globalCompositeOperation = 'source-over';
+  fgCtx.clearRect(0, 0, fgCanvas.width, fgCanvas.height);
+  fgCtx.drawImage(video, 0, 0, fgCanvas.width, fgCanvas.height);
+  fgCtx.globalCompositeOperation = 'destination-in';
+  fgCtx.filter = 'blur(1px)';
+  fgCtx.drawImage(maskCanvas, 0, 0, fgCanvas.width, fgCanvas.height);
+  fgCtx.filter = 'none';
+  fgCtx.restore();
+
+  result.close?.();
 }
 
 // ---------- Compositor ----------
@@ -771,8 +720,6 @@ videoEl.addEventListener('loadedmetadata', () => {
   if (fgCanvas.width !== w || fgCanvas.height !== h) {
     fgCanvas.width = w;
     fgCanvas.height = h;
-    maskCanvas.width = w;
-    maskCanvas.height = h;
   }
 });
 
