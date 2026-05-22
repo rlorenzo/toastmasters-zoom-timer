@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Toastmasters Zoom Timer</title>
+
+    <!-- Preload all four stoplight backgrounds for flicker-free transitions -->
+    <link
+      rel="preload"
+      as="image"
+      href="./images/toastmasters-zoom-stoplight-bk-timer-start-1920x1080.jpg"
+    />
+    <link
+      rel="preload"
+      as="image"
+      href="./images/toastmasters-zoom-stoplight-bk-timer-green-1920x1080.jpg"
+    />
+    <link
+      rel="preload"
+      as="image"
+      href="./images/toastmasters-zoom-stoplight-bk-timer-yellow-1920x1080.jpg"
+    />
+    <link
+      rel="preload"
+      as="image"
+      href="./images/toastmasters-zoom-stoplight-bk-timer-red-1920x1080.jpg"
+    />
+
+    <link rel="stylesheet" href="./styles.css" />
+
+    <!-- app.js handles all behavior; loaded as a module so ES imports work -->
+    <script type="module" src="./app.js" defer></script>
+  </head>
+  <body>
+    <!-- Hidden webcam source — JS reads frames from this element -->
+    <video id="video-source" autoplay muted playsinline aria-hidden="true"></video>
+
+    <!-- ─── Stage: hero canvas locked to 16:9 ─────────────────────────────── -->
+    <div
+      id="stage-wrap"
+      role="img"
+      aria-label="Composited speaker view with Toastmasters timing background"
+    >
+      <!-- ::after pseudo-element on #stage-wrap provides the overtime red pulse overlay -->
+      <canvas id="stage" width="1920" height="1080"></canvas>
+    </div>
+
+    <!-- ─── Sidebar: floating controls panel ──────────────────────────────── -->
+    <aside id="sidebar" aria-label="Timer controls">
+      <header class="sidebar-header">
+        <span class="sidebar-logo" aria-hidden="true">&#9654;</span>
+        <h1 class="sidebar-title">TM Timer</h1>
+      </header>
+
+      <!-- Clock readout -->
+      <div class="clock-block" aria-live="polite" aria-atomic="true">
+        <div id="clock-html" aria-label="Elapsed time">0:00</div>
+        <div id="state-label-html" class="state-badge">START</div>
+      </div>
+
+      <!-- Camera selector -->
+      <div class="field-group">
+        <label for="camera-select">Camera</label>
+        <select id="camera-select" aria-label="Select webcam">
+          <option value="">— detecting cameras… —</option>
+        </select>
+      </div>
+
+      <!-- Preset selector -->
+      <div class="field-group">
+        <label for="preset-select">Speech type</label>
+        <select id="preset-select" aria-label="Select speech preset">
+          <option value="table-topics">Table Topics (1–2 min)</option>
+          <option value="evaluation">Evaluation (2–3 min)</option>
+          <option value="ice-breaker">Ice Breaker (4–6 min)</option>
+          <option value="prepared" selected>Prepared Speech (5–7 min)</option>
+          <option value="long-speech">Long Speech (8–10 min)</option>
+          <option value="custom">Custom…</option>
+        </select>
+      </div>
+
+      <!-- Custom timing fields — hidden until "custom" is selected -->
+      <div id="custom-fields" hidden>
+        <div class="custom-fields-inner">
+          <div class="custom-field">
+            <label for="custom-green">Green at</label>
+            <input
+              id="custom-green"
+              type="text"
+              inputmode="numeric"
+              placeholder="m:ss"
+              aria-label="Green light time (m:ss)"
+              pattern="[0-9]+:[0-5][0-9]"
+              maxlength="5"
+            />
+          </div>
+          <div class="custom-field">
+            <label for="custom-yellow">Yellow at</label>
+            <input
+              id="custom-yellow"
+              type="text"
+              inputmode="numeric"
+              placeholder="m:ss"
+              aria-label="Yellow light time (m:ss)"
+              pattern="[0-9]+:[0-5][0-9]"
+              maxlength="5"
+            />
+          </div>
+          <div class="custom-field">
+            <label for="custom-red">Red at</label>
+            <input
+              id="custom-red"
+              type="text"
+              inputmode="numeric"
+              placeholder="m:ss"
+              aria-label="Red light time (m:ss)"
+              pattern="[0-9]+:[0-5][0-9]"
+              maxlength="5"
+            />
+          </div>
+        </div>
+      </div>
+
+      <!-- Action buttons -->
+      <div class="btn-group" role="group" aria-label="Playback controls">
+        <button
+          type="button"
+          id="btn-start-pause"
+          class="btn btn-primary"
+          aria-label="Start timer (Space)"
+        >
+          <span class="btn-label">Start</span>
+          <kbd aria-hidden="true">Space</kbd>
+        </button>
+
+        <button type="button" id="btn-reset" class="btn" aria-label="Reset timer (R)">
+          <span class="btn-label">Reset</span>
+          <kbd aria-hidden="true">R</kbd>
+        </button>
+      </div>
+
+      <!-- Toggle buttons -->
+      <div class="btn-group btn-group--toggles" role="group" aria-label="View options">
+        <button
+          type="button"
+          id="btn-mirror"
+          class="btn btn-icon"
+          aria-label="Toggle mirror preview (M)"
+          aria-pressed="false"
+        >
+          <span class="btn-icon-glyph" aria-hidden="true">&#8596;</span>
+          <span class="btn-label">Mirror</span>
+          <kbd aria-hidden="true">M</kbd>
+        </button>
+
+        <button
+          type="button"
+          id="btn-bell"
+          class="btn btn-icon"
+          aria-label="Toggle bell chimes (B)"
+          aria-pressed="false"
+        >
+          <span class="btn-icon-glyph" aria-hidden="true">&#128276;</span>
+          <span class="btn-label">Bell</span>
+          <kbd aria-hidden="true">B</kbd>
+        </button>
+      </div>
+
+      <!-- Help / Setup Guide -->
+      <div class="btn-group btn-group--footer" role="group">
+        <button type="button" id="btn-help" class="btn btn-ghost" aria-label="Open setup guide (?)">
+          <span class="btn-label">Setup Guide</span>
+          <kbd aria-hidden="true">?</kbd>
+        </button>
+      </div>
+
+      <footer class="sidebar-footer">
+        <p class="shortcut-hint">Press <kbd>H</kbd> to hide controls</p>
+      </footer>
+    </aside>
+
+    <!-- ─── Setup Guide dialog ─────────────────────────────────────────────── -->
+    <dialog id="setup-guide" aria-label="OBS and Zoom setup instructions" aria-modal="true">
+      <div class="dialog-inner">
+        <div class="dialog-header">
+          <h2>Setup Guide</h2>
+          <form method="dialog">
+            <button
+              type="submit"
+              id="btn-close-guide"
+              class="btn btn-ghost btn-close"
+              aria-label="Close setup guide"
+            >
+              &#10005;
+            </button>
+          </form>
+        </div>
+
+        <div class="dialog-body">
+          <!-- Section 1: OBS -->
+          <section class="setup-section" aria-labelledby="setup-obs-heading">
+            <h3 id="setup-obs-heading">
+              <span class="setup-section-icon" aria-hidden="true">&#127910;</span>
+              OBS Studio Virtual Camera
+              <span class="setup-recommended">Recommended</span>
+            </h3>
+            <p>
+              OBS captures this browser tab and exposes it as a system-level virtual camera that
+              Zoom can select natively — the audience sees only the composite, no browser chrome.
+            </p>
+            <ol class="setup-steps">
+              <li>
+                <strong>Install OBS Studio</strong>
+                from
+                <a href="https://obsproject.com" target="_blank" rel="noopener noreferrer"
+                  >obsproject.com</a
+                >
+                (free, Windows / macOS / Linux).
+              </li>
+              <li>
+                In OBS, click <strong>+</strong> under <em>Sources</em> and choose
+                <strong>Window Capture</strong>
+                (Windows) or <strong>macOS Screen Capture</strong>.
+              </li>
+              <li>
+                Select this browser window or tab from the source dropdown. Resize the source to
+                fill the scene at <strong>1920×1080</strong>.
+              </li>
+              <li>
+                Click <strong>Start Virtual Camera</strong> in the OBS control panel (bottom-right).
+              </li>
+              <li>
+                In Zoom → Settings → Video, select <strong>OBS Virtual Camera</strong> as your
+                camera.
+              </li>
+              <li>
+                Press <kbd>H</kbd> here to enter <strong>Stage Mode</strong> (hides controls) so OBS
+                captures a clean feed.
+              </li>
+            </ol>
+          </section>
+
+          <hr class="setup-divider" />
+
+          <!-- Section 2: Zoom Share Window -->
+          <section class="setup-section" aria-labelledby="setup-zoom-heading">
+            <h3 id="setup-zoom-heading">
+              <span class="setup-section-icon" aria-hidden="true">&#128247;</span>
+              Zoom Share Window
+            </h3>
+            <p>
+              No extra software needed — share this browser tab directly in Zoom. The audience sees
+              the canvas; you see the controls in your presenter view.
+            </p>
+            <ol class="setup-steps">
+              <li>In Zoom, click <strong>Share Screen</strong>.</li>
+              <li>
+                Switch to the <strong>Window</strong> or <strong>Advanced</strong> tab and select
+                this browser window.
+              </li>
+              <li>Enable <strong>"Optimize for video clip"</strong> for smoother frame rate.</li>
+              <li>
+                Press <kbd>H</kbd> here to enter <strong>Stage Mode</strong> so viewers see only the
+                composited canvas — no sidebar, no controls.
+              </li>
+              <li>
+                Start the timer via keyboard shortcut (<kbd>Space</kbd>) so you don't need to click
+                back to this window.
+              </li>
+            </ol>
+            <p class="setup-note">
+              <strong>Note:</strong>
+              Zoom's share-window path captures your whole browser tab, including the page
+              background. Stage Mode minimises visible chrome to just the canvas.
+            </p>
+          </section>
+        </div><!-- /.dialog-body -->
+      </div><!-- /.dialog-inner -->
+    </dialog>
+  </body>
+</html>

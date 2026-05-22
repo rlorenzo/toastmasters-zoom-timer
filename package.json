@@ -1,0 +1,31 @@
+{
+  "name": "toastmasters-zoom-timer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Browser-based Toastmasters speech timer with auto-changing stoplight virtual background.",
+  "type": "module",
+  "scripts": {
+    "serve": "./serve.sh",
+    "lint": "npm run lint:web && npm run lint:md && npm run lint:sh && npm run lint:fallow",
+    "lint:web": "biome check .",
+    "lint:md": "markdownlint-cli2 \"**/*.md\" \"#node_modules\"",
+    "lint:sh": "shellcheck serve.sh",
+    "lint:fallow": "fallow check",
+    "fmt": "biome format --write . && markdownlint-cli2 --fix \"**/*.md\" \"#node_modules\"",
+    "fix": "biome check --write . && markdownlint-cli2 --fix \"**/*.md\" \"#node_modules\"",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.{js,mjs,css,html,json,jsonc}": "biome check --write --no-errors-on-unmatched",
+    "*.md": "markdownlint-cli2 --fix",
+    "*.sh": "shellcheck"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.3.0",
+    "fallow": "latest",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.5",
+    "markdownlint-cli2": "^0.22.1",
+    "shellcheck": "^3.1.0"
+  }
+}

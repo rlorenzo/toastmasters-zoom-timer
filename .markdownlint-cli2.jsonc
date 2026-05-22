@@ -1,0 +1,19 @@
+{
+  // Markdownlint config — fix-friendly defaults for prose-heavy docs.
+  // https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md
+  "config": {
+    "default": true,
+    // Allow long lines (prose). Code-block enforcement still applies via MD013 strict mode off.
+    "MD013": false,
+    // Allow inline HTML (e.g., <kbd>, <dialog> snippets, <details>).
+    "MD033": false,
+    // Allow bare URLs in tables and prose.
+    "MD034": false,
+    // Don't require dollar signs to be consistent in shell snippets.
+    "MD014": false,
+    // Table pipe alignment — purely cosmetic, not worth chasing.
+    "MD058": false,
+    "MD060": false
+  },
+  "ignores": ["node_modules", "images"]
+}
