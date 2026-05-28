@@ -4,23 +4,53 @@
    No JavaScript logic lives here.
    ========================================================= */
 
+/* ── Self-hosted brand typefaces (latin subset, variable) ─── */
+/* Kept local so no third-party font requests are made at runtime. */
+@font-face {
+  font-family: "Montserrat";
+  font-style: normal;
+  font-weight: 500 800;
+  font-display: swap;
+  src: url("./fonts/montserrat.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Source Sans 3";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("./fonts/source-sans-3.woff2") format("woff2");
+}
+
 /* ── Custom properties ───────────────────────────────────── */
 :root {
-  /* Palette */
-  --color-bg: #0d0f14;
-  --color-surface: rgba(18, 22, 32, 0.72);
-  --color-surface-hover: rgba(255, 255, 255, 0.06);
-  --color-border: rgba(255, 255, 255, 0.1);
-  --color-border-strong: rgba(255, 255, 255, 0.22);
-  --color-text: #e8eaf0;
-  --color-text-muted: #7c8298;
-  --color-text-dim: #4a5068;
-  --color-accent: #c8a84b; /* Toastmasters gold */
-  --color-accent-glow: rgba(200, 168, 75, 0.3);
+  /* Toastmasters brand palette */
+  --tm-loyal-blue: #004165;
+  --tm-blissful-blue: #006094;
+  --tm-true-maroon: #772432;
+  --tm-cool-gray: #a9b2b1;
+  --tm-happy-yellow: #f2df74;
+  --tm-fair-gray: #f5f5f5;
 
-  /* State colours — sidebar badge only */
+  /* App surfaces — dark, Loyal Blue based */
+  --color-bg: #00121d;
+  --color-surface: rgba(0, 40, 62, 0.72);
+  --color-surface-solid: #042a40; /* opaque dark Loyal Blue for dialog + select menu */
+  --color-surface-hover: rgba(255, 255, 255, 0.07);
+  --color-border: rgba(255, 255, 255, 0.12);
+  --color-border-strong: rgba(255, 255, 255, 0.24);
+  --color-text: var(--tm-fair-gray);
+  --color-text-muted: var(--tm-cool-gray);
+  --color-text-dim: #6f8086;
+
+  /* Accent — Happy Yellow */
+  --color-accent: var(--tm-happy-yellow);
+  --color-accent-hover: #f7e89a;
+  --color-accent-ink: #00293f; /* dark text on yellow */
+  --color-accent-glow: rgba(242, 223, 116, 0.32);
+
+  /* Timing-light states (physical Toastmasters timing convention) */
   --color-green: #34d058;
-  --color-yellow: #f4c542;
+  --color-yellow: var(--tm-happy-yellow);
   --color-red: #f05252;
   --color-overtime-glow: rgba(240, 82, 82, 0.22);
   --color-overtime-border: rgba(240, 82, 82, 0.7);
@@ -32,7 +62,8 @@
   --sidebar-gap: 12px;
 
   /* Type */
-  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-ui: "Source Sans 3", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  --font-display: "Montserrat", "Source Sans 3", -apple-system, "Segoe UI", Arial, sans-serif;
   --font-mono: "SF Mono", "Fira Code", "Cascadia Code", ui-monospace, monospace;
 
   /* Motion */
@@ -224,12 +255,14 @@ body.stage-clean {
 }
 
 .sidebar-logo {
-  font-size: 18px;
+  display: inline-flex;
+  align-items: center;
   color: var(--color-accent);
   line-height: 1;
 }
 
 .sidebar-title {
+  font-family: var(--font-display);
   font-size: 15px;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -264,6 +297,7 @@ body.stage-clean {
 
 .state-badge {
   display: inline-block;
+  font-family: var(--font-display);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.1em;
@@ -284,7 +318,7 @@ body.stage-clean {
 }
 
 #state-label-html[data-state="yellow"] {
-  background: rgba(244, 197, 66, 0.18);
+  background: rgba(242, 223, 116, 0.18);
   color: var(--color-yellow);
 }
 
@@ -331,7 +365,7 @@ input[type="text"] {
 
 select {
   /* Custom arrow */
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%237c8298' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23a9b2b1' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 10px center;
   padding-right: 28px;
@@ -350,7 +384,7 @@ input[type="text"]:focus {
 
 /* Select option dark styling */
 select option {
-  background: #1a1e2a;
+  background: var(--color-surface-solid);
   color: var(--color-text);
 }
 
@@ -457,9 +491,9 @@ kbd {
   border: 1px solid var(--color-border);
   border-radius: 9px;
   color: var(--color-text);
-  font-family: var(--font-ui);
+  font-family: var(--font-display);
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
   transition:
     background var(--duration-fast),
@@ -489,19 +523,19 @@ kbd {
 .btn-primary {
   background: var(--color-accent);
   border-color: var(--color-accent);
-  color: #1a1200;
+  color: var(--color-accent-ink);
   font-weight: 700;
   letter-spacing: 0.02em;
   justify-content: center;
 }
 
 .btn-primary:hover {
-  background: #d9b84f;
-  border-color: #d9b84f;
+  background: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
 }
 
 .btn-primary kbd {
-  color: rgba(26, 18, 0, 0.55);
+  color: rgba(0, 41, 63, 0.6);
   background: rgba(0, 0, 0, 0.12);
 }
 
@@ -523,8 +557,8 @@ kbd {
 
 /* Pressed / active toggle state */
 .btn-icon[aria-pressed="true"] {
-  background: rgba(200, 168, 75, 0.14);
-  border-color: rgba(200, 168, 75, 0.4);
+  background: rgba(242, 223, 116, 0.14);
+  border-color: rgba(242, 223, 116, 0.4);
   color: var(--color-accent);
 }
 
@@ -590,7 +624,7 @@ dialog::backdrop {
   flex-direction: column;
   height: 100%;
   max-height: 90vh;
-  background: #181d2a;
+  background: var(--color-surface-solid);
   border: 1px solid var(--color-border-strong);
   border-radius: var(--sidebar-radius);
   overflow: hidden;
@@ -606,6 +640,7 @@ dialog::backdrop {
 }
 
 .dialog-header h2 {
+  font-family: var(--font-display);
   font-size: 18px;
   font-weight: 700;
   letter-spacing: 0.01em;
@@ -646,6 +681,7 @@ dialog::backdrop {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+  font-family: var(--font-display);
   font-size: 15px;
   font-weight: 700;
   margin-bottom: 10px;
@@ -663,9 +699,9 @@ dialog::backdrop {
   text-transform: uppercase;
   padding: 2px 8px;
   border-radius: 20px;
-  background: rgba(200, 168, 75, 0.18);
+  background: rgba(242, 223, 116, 0.18);
   color: var(--color-accent);
-  border: 1px solid rgba(200, 168, 75, 0.35);
+  border: 1px solid rgba(242, 223, 116, 0.35);
 }
 
 .setup-section p {
@@ -700,8 +736,8 @@ dialog::backdrop {
   min-width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: rgba(200, 168, 75, 0.15);
-  border: 1px solid rgba(200, 168, 75, 0.35);
+  background: rgba(242, 223, 116, 0.15);
+  border: 1px solid rgba(242, 223, 116, 0.35);
   color: var(--color-accent);
   font-size: 11px;
   font-weight: 700;

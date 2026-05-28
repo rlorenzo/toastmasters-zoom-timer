@@ -1,6 +1,6 @@
 # Toastmasters Zoom Timer
 
-A browser-based speech timer for Toastmasters meetings on Zoom. Grant your webcam access, pick a speech preset, and the app composites you onto the official Toastmasters virtual background — the stoplight graphic on the right edge of the frame automatically lights up green, yellow, and red as your speech crosses each timing threshold. Your audience sees a clean, branded backdrop with a built-in visual timer; you never have to glance away from the camera. Everything runs entirely in your browser: no installation, no server, no file uploads, and no data leaves your machine.
+A browser-based speech timer for Toastmasters meetings on Zoom. Grant your webcam access, pick a speech preset, and the app composites you onto the official Toastmasters virtual background. While idle it shows your segmented webcam; once you start the timer the frame floods green, yellow, then red as your speech crosses each threshold, with a large countdown taking center stage in place of your video so the audience focuses on the time. Everything runs entirely in your browser: no installation, no server, and no file uploads. Your camera feed is processed locally and never leaves your machine; the only outbound requests are to fetch the MediaPipe segmentation runtime and model from public CDNs (jsDelivr and Google).
 
 ---
 
@@ -85,7 +85,7 @@ Custom thresholds are editable in the sidebar and saved across sessions via `loc
 
 ## How It Works
 
-On each video frame, MediaPipe SelfieSegmenter runs entirely in-browser (GPU-accelerated via WebGPU where available, WebGL2 otherwise) to separate you from your background. The compositor draws the active Toastmasters stoplight background image onto a `<canvas>`, then draws only your segmented silhouette on top, positioned in the speaker zone to the left of the stoplight graphic. When your elapsed time crosses a preset threshold the background image is swapped — from START to green, green to yellow, yellow to red — which changes which bulb on the stoplight is lit. `canvas.captureStream()` exposes the composite as a `MediaStream` for direct OBS Browser Source routing.
+While idle, MediaPipe SelfieSegmenter runs entirely in-browser (GPU-accelerated via WebGPU where available, WebGL2 otherwise) to separate you from your background; the compositor draws the neutral Toastmasters background onto a `<canvas>` and layers your segmented silhouette in the centered speaker zone. Once timing starts the speaker zone is taken over by a large countdown instead of your video, and the background image is swapped as elapsed time crosses each preset threshold — neutral to green, green to yellow, yellow to red — flooding the whole frame with the state color. `canvas.captureStream()` exposes the composite as a `MediaStream` for direct OBS Browser Source routing.
 
 ---
 
@@ -93,10 +93,10 @@ On each video frame, MediaPipe SelfieSegmenter runs entirely in-browser (GPU-acc
 
 The four background images included in this repository under `images/` —
 
-- `images/toastmasters-zoom-stoplight-bk-timer-start-1920x1080.jpg`
-- `images/toastmasters-zoom-stoplight-bk-timer-green-1920x1080.jpg`
-- `images/toastmasters-zoom-stoplight-bk-timer-yellow-1920x1080.jpg`
-- `images/toastmasters-zoom-stoplight-bk-timer-red-1920x1080.jpg`
+- `images/toastmasters-zoom-virtual-logo-bk-1920x1080.jpg`
+- `images/toastmasters-zoom-virtual-logo-bk-timer-green-1920x1080.jpg`
+- `images/toastmasters-zoom-virtual-logo-bk-timer-yellow-1920x1080.jpg`
+- `images/toastmasters-zoom-virtual-logo-bk-timer-red-1920x1080.jpg`
 
 — are official Toastmasters International materials and are included here solely for use within Toastmasters club meetings.
 

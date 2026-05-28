@@ -1,4 +1,4 @@
-// Toastmasters Zoom Timer — composites segmented webcam onto official stoplight backgrounds.
+// Toastmasters Zoom Timer — composites segmented webcam onto official virtual backgrounds.
 // Single ES module. No build step. Binds exclusively to DOM contract IDs from index.html.
 
 // ---------- Constants ----------
@@ -14,13 +14,18 @@ const PRESETS = {
 const PRESET_KEYS = ['table-topics', 'evaluation', 'ice-breaker', 'prepared', 'long-speech'];
 const DEFAULT_PRESET = 'prepared';
 
-// Speaker compositing region inside the 1920x1080 stage (left of stoplight, below logo).
-const SPEAKER_ZONE = { x: 96, y: 86, w: 1286, h: 940 };
+// Speaker compositing region inside the 1920x1080 stage — centered within the
+// background's inner frame, below the logo/label bar.
+const SPEAKER_ZONE = { x: 140, y: 200, w: 1640, h: 760 };
 const CLOCK_BADGE = { x: 48, y: 960, w: 280, h: 80, r: 16 };
 
 const OVERTIME_MARGIN = 30; // seconds past red counts as overtime
 const STAGE_W = 1920;
 const STAGE_H = 1080;
+
+// Canvas can't read CSS custom properties, so the on-stage readouts carry their
+// own font family (mirrors --font-mono in styles.css).
+const MONO_FONT = 'ui-monospace, "SF Mono", Menlo, Consolas, monospace';
 
 const LS = {
   cameraId: 'tmtimer.cameraId',
@@ -61,14 +66,22 @@ function $(id) {
 }
 
 // ---------- Asset preload ----------
+// Full-frame Toastmasters virtual backgrounds. The colored states flood the
+// whole frame and carry their own state label; "start" uses the neutral logo
+// background.
+const BG_SRC = {
+  start: './images/toastmasters-zoom-virtual-logo-bk-1920x1080.jpg',
+  green: './images/toastmasters-zoom-virtual-logo-bk-timer-green-1920x1080.jpg',
+  yellow: './images/toastmasters-zoom-virtual-logo-bk-timer-yellow-1920x1080.jpg',
+  red: './images/toastmasters-zoom-virtual-logo-bk-timer-red-1920x1080.jpg',
+};
+
 // Await all backgrounds; if one fails the compositor will skip that background.
 const bgImages = {};
 await Promise.all(
   STATES.map(async (s) => {
     try {
-      bgImages[s] = await loadImage(
-        `./images/toastmasters-zoom-stoplight-bk-timer-${s}-1920x1080.jpg`
-      );
+      bgImages[s] = await loadImage(BG_SRC[s]);
     } catch (e) {
       console.error(`Failed to load background ${s}`, e);
     }
@@ -254,17 +267,30 @@ async function startCamera(deviceId) {
     for (const t of app.stream.getTracks()) t.stop();
     app.stream = null;
   }
+  const buildConstraints = (id) => ({
+    video: {
+      width: { ideal: 1280 },
+      height: { ideal: 720 },
+      aspectRatio: { ideal: 16 / 9 },
+      deviceId: id ? { exact: id } : undefined,
+    },
+    audio: false,
+  });
   try {
-    const constraints = {
-      video: {
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
-        aspectRatio: 16 / 9,
-        deviceId: deviceId ? { exact: deviceId } : undefined,
-      },
-      audio: false,
-    };
-    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia(buildConstraints(deviceId));
+    } catch (e) {
+      // A pinned deviceId that no longer matches an available camera (e.g. IDs
+      // rotated across a browser restart) throws OverconstrainedError. Drop the
+      // pin, forget the stale id, and fall back to the default camera.
+      if (deviceId && (e.name === 'OverconstrainedError' || e.name === 'NotFoundError')) {
+        localStorage.removeItem(LS.cameraId);
+        stream = await navigator.mediaDevices.getUserMedia(buildConstraints(undefined));
+      } else {
+        throw e;
+      }
+    }
     app.stream = stream;
     videoEl.srcObject = stream;
     await videoEl.play();
@@ -430,6 +456,50 @@ function isOvertime(elapsed) {
   return elapsed >= activeThresholds().red + OVERTIME_MARGIN;
 }
 
+// The backgrounds flood the whole frame with the state color and bake in their
+// own GREEN/YELLOW/RED label, so the timer is rendered white (legible on every
+// flood color) with a dark outline + shadow. Overtime has no dedicated
+// background, so we surface an explicit "OVERTIME" label.
+function drawBigTimer(ctx, zone, text, overtime) {
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  const labelText = overtime ? 'OVERTIME' : '';
+  const labelReserve = labelText ? zone.h * 0.22 : 0;
+  const timerCenterY = zone.y + (zone.h - labelReserve) / 2;
+  const labelCenterY = zone.y + zone.h - labelReserve / 2;
+
+  let timerFontSize = Math.floor((zone.h - labelReserve) * 0.7);
+  ctx.font = `700 ${timerFontSize}px ${MONO_FONT}`;
+  const maxWidth = zone.w * 0.9;
+  const measured = ctx.measureText(text).width;
+  if (measured > maxWidth) {
+    timerFontSize = Math.floor(timerFontSize * (maxWidth / measured));
+    ctx.font = `700 ${timerFontSize}px ${MONO_FONT}`;
+  }
+
+  ctx.shadowColor = 'rgba(0,0,0,0.45)';
+  ctx.shadowBlur = timerFontSize * 0.06;
+  ctx.shadowOffsetY = timerFontSize * 0.02;
+  ctx.lineWidth = Math.max(2, timerFontSize * 0.03);
+  ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+  ctx.strokeText(text, zone.x + zone.w / 2, timerCenterY);
+  ctx.fillStyle = '#fff';
+  ctx.fillText(text, zone.x + zone.w / 2, timerCenterY);
+
+  if (labelText) {
+    const labelFontSize = Math.floor(zone.h * 0.12);
+    ctx.font = `800 ${labelFontSize}px ${MONO_FONT}`;
+    ctx.lineWidth = Math.max(2, labelFontSize * 0.06);
+    ctx.strokeText(labelText, zone.x + zone.w / 2, labelCenterY);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(labelText, zone.x + zone.w / 2, labelCenterY);
+  }
+
+  ctx.restore();
+}
+
 function renderFrame(nowMs) {
   // Background
   const state = app.mode === 'idle' ? 'start' : computeState(app.elapsed);
@@ -441,23 +511,31 @@ function renderFrame(nowMs) {
     stageCtx.fillRect(0, 0, STAGE_W, STAGE_H);
   }
 
-  // Speaker
-  if (videoEl.readyState >= 2 && fgCanvas.width) {
+  // Once the timer starts the focus shifts to the clock: the speaker zone
+  // shows a giant readout instead of the segmented webcam.
+  const showBigTimer = app.mode !== 'idle';
+  const overtime = showBigTimer && isOvertime(app.elapsed);
+
+  if (showBigTimer) {
+    drawBigTimer(stageCtx, SPEAKER_ZONE, formatTime(app.elapsed), overtime);
+  } else if (videoEl.readyState >= 2 && fgCanvas.width) {
     drawSpeakerCover(stageCtx, fgCanvas, SPEAKER_ZONE);
   }
 
-  // Clock badge
-  const cb = CLOCK_BADGE;
-  stageCtx.save();
-  drawRoundedRect(stageCtx, cb.x, cb.y, cb.w, cb.h, cb.r);
-  stageCtx.fillStyle = 'rgba(0,0,0,0.65)';
-  stageCtx.fill();
-  stageCtx.fillStyle = '#fff';
-  stageCtx.font = '600 60px ui-monospace, "SF Mono", Menlo, Consolas, monospace';
-  stageCtx.textAlign = 'center';
-  stageCtx.textBaseline = 'middle';
-  stageCtx.fillText(formatTime(app.elapsed), cb.x + cb.w / 2, cb.y + cb.h / 2 + 2);
-  stageCtx.restore();
+  // Clock badge — only shown while the big timer is not taking the stage.
+  if (!showBigTimer) {
+    const cb = CLOCK_BADGE;
+    stageCtx.save();
+    drawRoundedRect(stageCtx, cb.x, cb.y, cb.w, cb.h, cb.r);
+    stageCtx.fillStyle = 'rgba(0,0,0,0.65)';
+    stageCtx.fill();
+    stageCtx.fillStyle = '#fff';
+    stageCtx.font = `600 60px ${MONO_FONT}`;
+    stageCtx.textAlign = 'center';
+    stageCtx.textBaseline = 'middle';
+    stageCtx.fillText(formatTime(app.elapsed), cb.x + cb.w / 2, cb.y + cb.h / 2 + 2);
+    stageCtx.restore();
+  }
 
   // Overtime pulse
   if (app.mode === 'running' && isOvertime(app.elapsed)) {
@@ -515,8 +593,9 @@ async function frameStep(nowMs, metadata) {
   const overtime = app.mode !== 'idle' && isOvertime(app.elapsed);
   document.body.classList.toggle('is-overtime', overtime);
 
-  // Segment (only if we have a live frame).
-  if (videoEl.readyState >= 2 && !videoEl.paused && !videoEl.ended) {
+  // Segment (only if we have a live frame and the speaker view is on screen;
+  // once timing starts the big clock takes over so we can skip the work).
+  if (app.mode === 'idle' && videoEl.readyState >= 2 && !videoEl.paused && !videoEl.ended) {
     try {
       await segmentFrame(videoEl, metadata?.mediaTime ? metadata.mediaTime * 1000 : nowMs);
     } catch (_e) {

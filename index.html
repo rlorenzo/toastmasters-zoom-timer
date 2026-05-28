@@ -4,27 +4,39 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Toastmasters Zoom Timer</title>
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
 
-    <!-- Preload all four stoplight backgrounds for flicker-free transitions -->
+    <!-- Brand typefaces: Montserrat (free Gotham alternate) + Source Sans 3 (Myriad Pro alternate).
+         Self-hosted so the app stays fully local — no third-party font requests. @font-face in styles.css. -->
+    <link rel="preload" as="font" type="font/woff2" href="./fonts/montserrat.woff2" crossorigin />
+    <link
+      rel="preload"
+      as="font"
+      type="font/woff2"
+      href="./fonts/source-sans-3.woff2"
+      crossorigin
+    />
+
+    <!-- Preload all four virtual backgrounds for flicker-free transitions -->
     <link
       rel="preload"
       as="image"
-      href="./images/toastmasters-zoom-stoplight-bk-timer-start-1920x1080.jpg"
+      href="./images/toastmasters-zoom-virtual-logo-bk-1920x1080.jpg"
     />
     <link
       rel="preload"
       as="image"
-      href="./images/toastmasters-zoom-stoplight-bk-timer-green-1920x1080.jpg"
+      href="./images/toastmasters-zoom-virtual-logo-bk-timer-green-1920x1080.jpg"
     />
     <link
       rel="preload"
       as="image"
-      href="./images/toastmasters-zoom-stoplight-bk-timer-yellow-1920x1080.jpg"
+      href="./images/toastmasters-zoom-virtual-logo-bk-timer-yellow-1920x1080.jpg"
     />
     <link
       rel="preload"
       as="image"
-      href="./images/toastmasters-zoom-stoplight-bk-timer-red-1920x1080.jpg"
+      href="./images/toastmasters-zoom-virtual-logo-bk-timer-red-1920x1080.jpg"
     />
 
     <link rel="stylesheet" href="./styles.css" />
@@ -49,7 +61,22 @@
     <!-- ─── Sidebar: floating controls panel ──────────────────────────────── -->
     <aside id="sidebar" aria-label="Timer controls">
       <header class="sidebar-header">
-        <span class="sidebar-logo" aria-hidden="true">&#9654;</span>
+        <span class="sidebar-logo" aria-hidden="true">
+          <svg viewBox="0 0 64 64" width="22" height="22" fill="currentColor">
+            <title>TM Timer</title>
+            <rect x="27" y="9" width="10" height="6" rx="2" />
+            <rect x="29.5" y="13" width="5" height="9" rx="2" />
+            <circle cx="32" cy="38" r="3" />
+            <circle cx="32" cy="38" r="16" fill="none" stroke="currentColor" stroke-width="4" />
+            <path
+              d="M32 38 L41 30"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="3.5"
+              stroke-linecap="round"
+            />
+          </svg>
+        </span>
         <h1 class="sidebar-title">TM Timer</h1>
       </header>
 
