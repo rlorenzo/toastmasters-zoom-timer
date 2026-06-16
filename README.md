@@ -171,8 +171,10 @@ only the files you have staged:
 | `*.md`                           | `markdownlint-cli2 --fix` | Auto-fixes & re-stages |
 | `*.sh`                           | `shellcheck`              | Check only             |
 
-The project-graph linter (`fallow`) is not in the hook — it needs the full
-module graph and is too slow for a per-commit check. It runs in CI instead.
+After `lint-staged`, the hook also runs `npm run lint:fallow` (fallow's
+dead-code + duplication analysis, ~0.5s). It is project-wide rather than
+per-staged-file, so it runs as its own step. The coverage-driven complexity/CRAP
+gate stays in CI since it needs the test run.
 
 To skip the hook for an exceptional commit, use `git commit --no-verify`.
 
