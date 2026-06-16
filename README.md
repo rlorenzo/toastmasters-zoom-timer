@@ -178,8 +178,9 @@ To skip the hook for an exceptional commit, use `git commit --no-verify`.
 
 ### Continuous integration
 
-`.github/workflows/lint.yml` runs `npm run lint`, `npm test`, and
-`npm run health:gate` on every push to `main` and every pull request. It checks
-out full history so `fallow audit` can diff against the base branch. Locally,
-`npm run fix` resolves most formatting and lint issues automatically before you
-push.
+`.github/workflows/lint.yml` runs `npm run lint` and `npm run coverage` (the
+Vitest suite) on every push to `main` and every pull request, plus the
+coverage-driven complexity/CRAP gate (`fallow audit`) on pull requests. It checks
+out full history and passes the base branch explicitly so the audit can diff
+against it. Locally, `npm run health:gate` runs the same gate (auto-detecting the
+base), and `npm run fix` resolves most formatting and lint issues before you push.

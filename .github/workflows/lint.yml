@@ -26,8 +26,12 @@ jobs:
 
       - run: npm run lint
 
-      - run: npm test
+      # Runs the Vitest suite and produces coverage/coverage-final.json.
+      - run: npm run coverage
 
       # Coverage-driven complexity/CRAP gate: fails on newly introduced complexity,
-      # dead code, or duplication in changed files.
-      - run: npm run health:gate
+      # dead code, or duplication vs the PR base. fallow can't auto-detect the base
+      # in CI's detached checkout, so pass it explicitly.
+      - name: Complexity/CRAP gate
+        if: github.event_name == 'pull_request'
+        run: npx fallow audit --gate new-only --coverage coverage/coverage-final.json --base "origin/${{ github.base_ref }}"
