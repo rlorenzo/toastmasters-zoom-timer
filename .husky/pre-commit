@@ -1,1 +1,6 @@
 npx lint-staged
+
+# fallow analyzes the whole module graph (not per-file), so it runs after
+# lint-staged rather than inside it. dead-code + duplication only; the
+# coverage-driven complexity/CRAP gate stays in CI (it needs the test run).
+npm run lint:fallow

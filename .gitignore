@@ -22,3 +22,6 @@ dist/
 build/
 .cache/
 .fallow/
+
+# Test coverage output
+coverage/

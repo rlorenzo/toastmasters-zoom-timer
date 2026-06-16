@@ -41,8 +41,9 @@
 
     <link rel="stylesheet" href="./styles.css" />
 
-    <!-- app.js handles all behavior; loaded as a module so ES imports work -->
-    <script type="module" src="./app.js" defer></script>
+    <!-- main.js boots app.js (the DOM/IO shell over timer-core.js); loaded as a
+         module so ES imports work -->
+    <script type="module" src="./main.js" defer></script>
   </head>
   <body>
     <!-- Hidden webcam source — JS reads frames from this element -->
@@ -302,8 +303,10 @@
               background. Stage Mode minimises visible chrome to just the canvas.
             </p>
           </section>
-        </div><!-- /.dialog-body -->
-      </div><!-- /.dialog-inner -->
+        </div>
+        <!-- /.dialog-body -->
+      </div>
+      <!-- /.dialog-inner -->
     </dialog>
   </body>
 </html>

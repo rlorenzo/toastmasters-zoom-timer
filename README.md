@@ -117,7 +117,7 @@ Make sure the browser window is visible and not minimized. On macOS, OBS require
 
 ## Development
 
-This is a no-build project — the deployed app is just `index.html`, `styles.css`, `app.js`, and the four `images/*.jpg`. Tooling lives in `package.json` as dev-only dependencies.
+This is a no-build project. The deployed app is just `index.html`, `styles.css`, `main.js`, `app.js`, `timer-core.js`, and the four `images/*.jpg`. `timer-core.js` holds the pure logic and compositing (unit-tested), `app.js` is the DOM/IO shell, and `main.js` is the browser entry that boots it. Tooling lives in `package.json` as dev-only dependencies.
 
 ### Toolchain
 
@@ -125,23 +125,40 @@ This is a no-build project — the deployed app is just `index.html`, `styles.cs
 |----------------------------------------------------------------------|---------------------------------------------------------------------------------|------------------------------|
 | [Biome](https://biomejs.dev)                                         | JS, CSS, HTML, JSON — format + lint                                             | `biome.json`                 |
 | [markdownlint-cli2](https://github.com/DavidAnson/markdownlint-cli2) | Markdown — lint + auto-fix                                                      | `.markdownlint-cli2.jsonc`   |
-| [fallow](https://fallow.tools)                                       | JS project-graph analysis (unused code, duplication, circular deps, complexity) | `.fallowrc.jsonc`            |
-| [ShellCheck](https://www.shellcheck.net)                             | Shell script static analysis                                                    | (none)                       |
+| [fallow](https://fallow.tools)                                       | JS project-graph analysis: dead code, dep hygiene, circular deps, duplication    | `.fallowrc.jsonc`            |
+| [Vitest](https://vitest.dev) + jsdom                                 | Unit tests + Istanbul coverage (feeds fallow's CRAP scoring)                    | `vitest.config.js`           |
+| [ShellCheck](https://www.shellcheck.net)                             | Shell script static analysis                                                    | (none); system binary        |
+
+ShellCheck is the one tool not installed via npm. Install it with your system
+package manager (`brew install shellcheck`, `apt install shellcheck`, etc.); CI
+runners ship it preinstalled. The lint scripts call whatever `shellcheck` is on
+your `PATH`.
 
 ### Commands
 
 ```bash
 npm install        # one-time setup; also installs the Husky pre-commit hook
 
-npm run lint       # run all linters (biome + markdown + shellcheck + fallow)
+npm run lint       # static linters (biome + markdown + shellcheck + fallow dead-code/dupes)
+npm test           # run the Vitest unit suite
+npm run coverage   # Vitest with Istanbul coverage -> coverage/coverage-final.json
+npm run health     # full fallow health report (complexity/CRAP), advisory
+npm run health:gate # coverage + fallow audit; the CI complexity/CRAP gate
+
 npm run fix        # apply auto-fixes everywhere
 npm run fmt        # format only (no lint)
 
 npm run lint:web      # just biome
 npm run lint:md       # just markdown
 npm run lint:sh       # just shellcheck
-npm run lint:fallow   # just fallow
+npm run lint:fallow   # fallow dead-code + duplication
 ```
+
+`health:gate` runs the unit tests with Istanbul coverage and feeds the report to
+`fallow audit`, so CRAP scores reflect real test coverage rather than an estimate.
+It fails on newly introduced complexity, dead code, or duplication in changed
+files; the current tree is clean (no functions exceed the cyclomatic/cognitive/CRAP
+thresholds). `npm run health` prints the full advisory report.
 
 ### Pre-commit hook
 
@@ -154,13 +171,18 @@ only the files you have staged:
 | `*.md`                           | `markdownlint-cli2 --fix` | Auto-fixes & re-stages |
 | `*.sh`                           | `shellcheck`              | Check only             |
 
-The project-graph linter (`fallow`) is not in the hook — it needs the full
-module graph and is too slow for a per-commit check. It runs in CI instead.
+After `lint-staged`, the hook also runs `npm run lint:fallow` (fallow's
+dead-code + duplication analysis, ~0.5s). It is project-wide rather than
+per-staged-file, so it runs as its own step. The coverage-driven complexity/CRAP
+gate stays in CI since it needs the test run.
 
 To skip the hook for an exceptional commit, use `git commit --no-verify`.
 
 ### Continuous integration
 
-`.github/workflows/lint.yml` runs `npm run lint` (the full set, including
-`fallow`) on every push to `main` and every pull request. Locally,
-`npm run fix` resolves most issues automatically before you push.
+`.github/workflows/lint.yml` runs `npm run lint` and `npm run coverage` (the
+Vitest suite) on every push to `main` and every pull request, plus the
+coverage-driven complexity/CRAP gate (`fallow audit`) on pull requests. It checks
+out full history and passes the base branch explicitly so the audit can diff
+against it. Locally, `npm run health:gate` runs the same gate (auto-detecting the
+base), and `npm run fix` resolves most formatting and lint issues before you push.

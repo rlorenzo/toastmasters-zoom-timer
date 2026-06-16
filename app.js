@@ -1,38 +1,33 @@
-// Toastmasters Zoom Timer — composites segmented webcam onto official virtual backgrounds.
-// Single ES module. No build step. Binds exclusively to DOM contract IDs from index.html.
+// Toastmasters Zoom Timer — DOM/IO shell.
+//
+// Binds the index.html DOM contract to the pure logic in timer-core.js, drives
+// the camera + MediaPipe segmenter, and runs the compositing loop. All timing
+// math, settings parsing, keyboard mapping, camera fallback, and stage drawing
+// live in timer-core.js so they can be unit-tested; this file is the imperative
+// shell. Boot is deferred to init() (called by main.js) so the module can be
+// imported under test without firing camera/network/loop side effects.
 
-// ---------- Constants ----------
-const STATES = ['start', 'green', 'yellow', 'red'];
-
-const PRESETS = {
-  'table-topics': { green: 60, yellow: 90, red: 120 },
-  evaluation: { green: 120, yellow: 150, red: 180 },
-  'ice-breaker': { green: 240, yellow: 300, red: 360 },
-  prepared: { green: 300, yellow: 360, red: 420 },
-  'long-speech': { green: 480, yellow: 540, red: 600 },
-};
-const PRESET_KEYS = ['table-topics', 'evaluation', 'ice-breaker', 'prepared', 'long-speech'];
-const DEFAULT_PRESET = 'prepared';
-
-// Speaker compositing region inside the 1920x1080 stage — centered within the
-// background's inner frame, below the logo/label bar.
-const SPEAKER_ZONE = { x: 140, y: 200, w: 1640, h: 760 };
-const CLOCK_BADGE = { x: 48, y: 960, w: 280, h: 80, r: 16 };
-
-const OVERTIME_MARGIN = 30; // seconds past red counts as overtime
-const STAGE_W = 1920;
-const STAGE_H = 1080;
-
-// Canvas can't read CSS custom properties, so the on-stage readouts carry their
-// own font family (mirrors --font-mono in styles.css).
-const MONO_FONT = 'ui-monospace, "SF Mono", Menlo, Consolas, monospace';
-
-const LS = {
-  cameraId: 'tmtimer.cameraId',
-  preset: 'tmtimer.preset',
-  customTimes: 'tmtimer.customTimes',
-  bell: 'tmtimer.bell',
-};
+import {
+  activeThresholds,
+  bellForTransition,
+  buildMaskAlpha,
+  cameraErrorMessage,
+  computeState,
+  DEFAULT_PRESET,
+  formatTime,
+  getUserMediaWithFallback,
+  isOvertime,
+  keyAction,
+  LS,
+  PRESET_KEYS,
+  PRESETS,
+  readSettings,
+  renderStage,
+  STATES,
+  shouldIgnoreKey,
+  stateLabel,
+  validateCustomTimes,
+} from './timer-core.js';
 
 // ---------- Helpers ----------
 function loadImage(src) {
@@ -42,23 +37,6 @@ function loadImage(src) {
     img.onerror = reject;
     img.src = src;
   });
-}
-
-const MSS_REGEX = /^(\d+):([0-5]?\d)$/;
-
-function parseTime(s) {
-  // "m:ss" -> seconds; returns NaN on bad input.
-  if (typeof s !== 'string') return NaN;
-  const m = MSS_REGEX.exec(s.trim());
-  if (!m) return NaN;
-  return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
-}
-
-function formatTime(sec) {
-  sec = Math.max(0, Math.floor(sec));
-  const m = Math.floor(sec / 60);
-  const ss = (sec % 60).toString().padStart(2, '0');
-  return `${m}:${ss}`;
 }
 
 function $(id) {
@@ -75,23 +53,12 @@ const BG_SRC = {
   yellow: './images/toastmasters-zoom-virtual-logo-bk-timer-yellow-1920x1080.jpg',
   red: './images/toastmasters-zoom-virtual-logo-bk-timer-red-1920x1080.jpg',
 };
-
-// Await all backgrounds; if one fails the compositor will skip that background.
 const bgImages = {};
-await Promise.all(
-  STATES.map(async (s) => {
-    try {
-      bgImages[s] = await loadImage(BG_SRC[s]);
-    } catch (e) {
-      console.error(`Failed to load background ${s}`, e);
-    }
-  })
-);
 
 // ---------- DOM ----------
 const videoEl = $('video-source');
 const stage = $('stage');
-const stageCtx = stage.getContext('2d', { alpha: false });
+const stageCtx = stage ? stage.getContext('2d', { alpha: false }) : null;
 const setupGuide = $('setup-guide');
 const btnStartPause = $('btn-start-pause');
 const btnReset = $('btn-reset');
@@ -121,7 +88,7 @@ const maskCtx = maskCanvas.getContext('2d');
 let maskImageData = null;
 
 // ---------- State ----------
-const app = {
+export const app = {
   mode: 'idle', // idle | running | paused
   elapsed: 0, // seconds
   lastTickMs: 0,
@@ -134,6 +101,10 @@ const app = {
   segmenter: null,
   audioCtx: null,
 };
+
+function thresholds() {
+  return activeThresholds(app.preset, app.customTimes);
+}
 
 // ---------- Sidebar error helper ----------
 function showSidebarError(msg) {
@@ -154,33 +125,15 @@ function clearSidebarError() {
 }
 
 // ---------- Persisted settings ----------
-function loadSettings() {
-  try {
-    const p = localStorage.getItem(LS.preset);
-    if (p && (PRESETS[p] || p === 'custom')) app.preset = p;
-    const c = localStorage.getItem(LS.customTimes);
-    if (c) {
-      const parsed = JSON.parse(c);
-      if (
-        parsed &&
-        Number.isFinite(parsed.green) &&
-        Number.isFinite(parsed.yellow) &&
-        Number.isFinite(parsed.red)
-      ) {
-        app.customTimes = parsed;
-      }
-    }
-    app.bellEnabled = localStorage.getItem(LS.bell) === '1';
-  } catch {}
-}
-loadSettings();
-
-function activeThresholds() {
-  return app.preset === 'custom' ? app.customTimes : PRESETS[app.preset];
+export function loadSettings() {
+  const s = readSettings((k) => localStorage.getItem(k));
+  if (s.preset) app.preset = s.preset;
+  if (s.customTimes) app.customTimes = s.customTimes;
+  app.bellEnabled = Boolean(s.bellEnabled);
 }
 
 // ---------- Preset / custom UI binding ----------
-function syncPresetUI() {
+export function syncPresetUI() {
   if (presetSelect) presetSelect.value = app.preset;
   if (customFields) customFields.hidden = app.preset !== 'custom';
   if (customGreen) customGreen.value = formatTime(app.customTimes.green);
@@ -188,7 +141,7 @@ function syncPresetUI() {
   if (customRed) customRed.value = formatTime(app.customTimes.red);
 }
 
-function showCustomError(msg) {
+export function showCustomError(msg) {
   if (!customFields) return;
   let p = customFields.querySelector('p.error');
   if (msg) {
@@ -203,44 +156,26 @@ function showCustomError(msg) {
   }
 }
 
-function readCustomFromInputs() {
-  const g = parseTime(customGreen?.value || '');
-  const y = parseTime(customYellow?.value || '');
-  const r = parseTime(customRed?.value || '');
-  if (!Number.isFinite(g) || !Number.isFinite(y) || !Number.isFinite(r)) {
-    showCustomError('Use m:ss (e.g. 1:30).');
-    return null;
-  }
-  if (!(g < y && y < r)) {
-    showCustomError('Green < Yellow < Red.');
+export function readCustomFromInputs() {
+  const res = validateCustomTimes(customGreen?.value, customYellow?.value, customRed?.value);
+  if (!res.ok) {
+    showCustomError(res.error);
     return null;
   }
   showCustomError(null);
-  return { green: g, yellow: y, red: r };
+  return res.value;
 }
 
-presetSelect?.addEventListener('change', () => {
-  const v = presetSelect.value;
-  if (!(PRESETS[v] || v === 'custom')) return;
-  app.preset = v;
-  localStorage.setItem(LS.preset, v);
+function applyPresetByIndex(idx) {
+  const key = PRESET_KEYS[idx];
+  if (!key) return;
+  app.preset = key;
+  localStorage.setItem(LS.preset, key);
   syncPresetUI();
-});
-
-for (const inp of [customGreen, customYellow, customRed]) {
-  inp?.addEventListener('input', () => {
-    const v = readCustomFromInputs();
-    if (v) {
-      app.customTimes = v;
-      localStorage.setItem(LS.customTimes, JSON.stringify(v));
-    }
-  });
 }
-
-syncPresetUI();
 
 // ---------- Camera manager ----------
-async function listCameras() {
+export async function listCameras() {
   if (!cameraSelect) return;
   try {
     const devices = await navigator.mediaDevices.enumerateDevices();
@@ -261,66 +196,43 @@ async function listCameras() {
   }
 }
 
-async function startCamera(deviceId) {
-  // Tear down any existing stream first.
+function stopStream() {
   if (app.stream) {
     for (const t of app.stream.getTracks()) t.stop();
     app.stream = null;
   }
-  const buildConstraints = (id) => ({
-    video: {
-      width: { ideal: 1280 },
-      height: { ideal: 720 },
-      aspectRatio: { ideal: 16 / 9 },
-      deviceId: id ? { exact: id } : undefined,
-    },
-    audio: false,
-  });
+}
+
+function persistActiveCamera(stream, deviceId) {
+  // Prefer the active track's resolved deviceId; fall back to the requested one.
+  const track = stream.getVideoTracks()[0];
+  const settings = track?.getSettings?.();
+  if (settings?.deviceId) {
+    localStorage.setItem(LS.cameraId, settings.deviceId);
+    if (cameraSelect) cameraSelect.value = settings.deviceId;
+  } else if (deviceId) {
+    localStorage.setItem(LS.cameraId, deviceId);
+  }
+}
+
+export async function startCamera(deviceId) {
+  stopStream();
   try {
-    let stream;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia(buildConstraints(deviceId));
-    } catch (e) {
-      // A pinned deviceId that no longer matches an available camera (e.g. IDs
-      // rotated across a browser restart) throws OverconstrainedError. Drop the
-      // pin, forget the stale id, and fall back to the default camera.
-      if (deviceId && (e.name === 'OverconstrainedError' || e.name === 'NotFoundError')) {
-        localStorage.removeItem(LS.cameraId);
-        stream = await navigator.mediaDevices.getUserMedia(buildConstraints(undefined));
-      } else {
-        throw e;
-      }
-    }
+    const stream = await getUserMediaWithFallback(navigator.mediaDevices, deviceId, () =>
+      localStorage.removeItem(LS.cameraId)
+    );
     app.stream = stream;
     videoEl.srcObject = stream;
     await videoEl.play();
     clearSidebarError();
     // Re-list cameras now that we have a labels permission grant.
     await listCameras();
-    // Persist selection (use the actual active track's deviceId if available).
-    const track = stream.getVideoTracks()[0];
-    const settings = track?.getSettings?.();
-    if (settings?.deviceId) {
-      localStorage.setItem(LS.cameraId, settings.deviceId);
-      if (cameraSelect) cameraSelect.value = settings.deviceId;
-    } else if (deviceId) {
-      localStorage.setItem(LS.cameraId, deviceId);
-    }
+    persistActiveCamera(stream, deviceId);
   } catch (e) {
-    if (e.name === 'NotAllowedError') {
-      showSidebarError('Camera permission denied. Allow access in browser settings and reload.');
-    } else if (e.name === 'NotFoundError') {
-      showSidebarError('No camera found. Connect a webcam and reload.');
-    } else {
-      showSidebarError(`Camera error: ${e.message || e.name}`);
-    }
+    showSidebarError(cameraErrorMessage(e));
     console.error('getUserMedia failed', e);
   }
 }
-
-cameraSelect?.addEventListener('change', () => {
-  startCamera(cameraSelect.value);
-});
 
 // ---------- Segmentation ----------
 const TASKS_VISION_URL =
@@ -355,7 +267,7 @@ async function initSegmenter() {
 
 // Run a frame through the tasks-vision multiclass segmenter. Mutates fgCanvas
 // to be the foreground (segmented person) on a transparent background.
-async function segmentFrame(video, tMs) {
+export async function segmentFrame(video, tMs) {
   if (!app.segmenter) {
     // No segmenter: draw raw video (no background removal).
     fgCtx.clearRect(0, 0, fgCanvas.width, fgCanvas.height);
@@ -388,10 +300,7 @@ async function segmentFrame(video, tMs) {
       px0[j + 2] = 255;
     }
   }
-  const px = maskImageData.data;
-  for (let i = 0, j = 3; i < data.length; i++, j += 4) {
-    px[j] = data[i] === 0 ? 0 : 255;
-  }
+  buildMaskAlpha(data, maskImageData.data);
   maskCtx.putImageData(maskImageData, 0, 0);
 
   // Build foreground: draw video, then keep only mask region. A 1px blur on the
@@ -410,140 +319,16 @@ async function segmentFrame(video, tMs) {
 }
 
 // ---------- Compositor ----------
-function drawRoundedRect(ctx, x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
-}
-
-function drawSpeakerCover(ctx, src, zone) {
-  // Aspect-preserving cover fit centered in zone.
-  const sw = src.width;
-  const sh = src.height;
-  if (!sw || !sh) return;
-  const zr = zone.w / zone.h;
-  const sr = sw / sh;
-  let sx, sy, sxw, syh;
-  if (sr > zr) {
-    // Source wider than zone — crop sides.
-    syh = sh;
-    sxw = sh * zr;
-    sx = (sw - sxw) / 2;
-    sy = 0;
-  } else {
-    // Source taller — crop top/bottom.
-    sxw = sw;
-    syh = sw / zr;
-    sx = 0;
-    sy = (sh - syh) / 2;
-  }
-  ctx.drawImage(src, sx, sy, sxw, syh, zone.x, zone.y, zone.w, zone.h);
-}
-
-function computeState(elapsed) {
-  const t = activeThresholds();
-  if (elapsed < t.green) return 'start';
-  if (elapsed < t.yellow) return 'green';
-  if (elapsed < t.red) return 'yellow';
-  return 'red';
-}
-
-function isOvertime(elapsed) {
-  return elapsed >= activeThresholds().red + OVERTIME_MARGIN;
-}
-
-// The backgrounds flood the whole frame with the state color and bake in their
-// own GREEN/YELLOW/RED label, so the timer is rendered white (legible on every
-// flood color) with a dark outline + shadow. Overtime has no dedicated
-// background, so we surface an explicit "OVERTIME" label.
-function drawBigTimer(ctx, zone, text, overtime) {
-  ctx.save();
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-
-  const labelText = overtime ? 'OVERTIME' : '';
-  const labelReserve = labelText ? zone.h * 0.22 : 0;
-  const timerCenterY = zone.y + (zone.h - labelReserve) / 2;
-  const labelCenterY = zone.y + zone.h - labelReserve / 2;
-
-  let timerFontSize = Math.floor((zone.h - labelReserve) * 0.7);
-  ctx.font = `700 ${timerFontSize}px ${MONO_FONT}`;
-  const maxWidth = zone.w * 0.9;
-  const measured = ctx.measureText(text).width;
-  if (measured > maxWidth) {
-    timerFontSize = Math.floor(timerFontSize * (maxWidth / measured));
-    ctx.font = `700 ${timerFontSize}px ${MONO_FONT}`;
-  }
-
-  ctx.shadowColor = 'rgba(0,0,0,0.45)';
-  ctx.shadowBlur = timerFontSize * 0.06;
-  ctx.shadowOffsetY = timerFontSize * 0.02;
-  ctx.lineWidth = Math.max(2, timerFontSize * 0.03);
-  ctx.strokeStyle = 'rgba(0,0,0,0.55)';
-  ctx.strokeText(text, zone.x + zone.w / 2, timerCenterY);
-  ctx.fillStyle = '#fff';
-  ctx.fillText(text, zone.x + zone.w / 2, timerCenterY);
-
-  if (labelText) {
-    const labelFontSize = Math.floor(zone.h * 0.12);
-    ctx.font = `800 ${labelFontSize}px ${MONO_FONT}`;
-    ctx.lineWidth = Math.max(2, labelFontSize * 0.06);
-    ctx.strokeText(labelText, zone.x + zone.w / 2, labelCenterY);
-    ctx.fillStyle = '#fff';
-    ctx.fillText(labelText, zone.x + zone.w / 2, labelCenterY);
-  }
-
-  ctx.restore();
-}
-
 function renderFrame(nowMs) {
-  // Background
-  const state = app.mode === 'idle' ? 'start' : computeState(app.elapsed);
-  const bg = bgImages[state];
-  if (bg) {
-    stageCtx.drawImage(bg, 0, 0, STAGE_W, STAGE_H);
-  } else {
-    stageCtx.fillStyle = '#222';
-    stageCtx.fillRect(0, 0, STAGE_W, STAGE_H);
-  }
-
-  // Once the timer starts the focus shifts to the clock: the speaker zone
-  // shows a giant readout instead of the segmented webcam.
-  const showBigTimer = app.mode !== 'idle';
-  const overtime = showBigTimer && isOvertime(app.elapsed);
-
-  if (showBigTimer) {
-    drawBigTimer(stageCtx, SPEAKER_ZONE, formatTime(app.elapsed), overtime);
-  } else if (videoEl.readyState >= 2 && fgCanvas.width) {
-    drawSpeakerCover(stageCtx, fgCanvas, SPEAKER_ZONE);
-  }
-
-  // Clock badge — only shown while the big timer is not taking the stage.
-  if (!showBigTimer) {
-    const cb = CLOCK_BADGE;
-    stageCtx.save();
-    drawRoundedRect(stageCtx, cb.x, cb.y, cb.w, cb.h, cb.r);
-    stageCtx.fillStyle = 'rgba(0,0,0,0.65)';
-    stageCtx.fill();
-    stageCtx.fillStyle = '#fff';
-    stageCtx.font = `600 60px ${MONO_FONT}`;
-    stageCtx.textAlign = 'center';
-    stageCtx.textBaseline = 'middle';
-    stageCtx.fillText(formatTime(app.elapsed), cb.x + cb.w / 2, cb.y + cb.h / 2 + 2);
-    stageCtx.restore();
-  }
-
-  // Overtime pulse
-  if (app.mode === 'running' && isOvertime(app.elapsed)) {
-    const t = nowMs / 1000;
-    const alpha = 0.1 + 0.1 * Math.sin(t * Math.PI * 4);
-    stageCtx.fillStyle = `rgba(255,0,0,${alpha})`;
-    stageCtx.fillRect(0, 0, STAGE_W, STAGE_H);
-  }
+  renderStage(stageCtx, {
+    images: bgImages,
+    mode: app.mode,
+    elapsed: app.elapsed,
+    thresholds: thresholds(),
+    nowMs,
+    videoReady: videoEl.readyState >= 2,
+    fgCanvas,
+  });
 }
 
 // ---------- Render loop ----------
@@ -557,40 +342,32 @@ function tickTimer(nowMs) {
   }
 }
 
-function updateStateLabelDom(state, overtime) {
+export function updateStateLabelDom(state, overtime) {
   if (!stateLabelHtml) return;
-  const label = overtime ? 'OVERTIME' : state.toUpperCase();
+  const { label, dataState } = stateLabel(state, overtime);
   if (stateLabelHtml.textContent !== label) stateLabelHtml.textContent = label;
   // CSS keys badge color off data-state — keep it in sync.
-  const dataState = overtime ? 'overtime' : state === 'start' ? '' : state;
   if (dataState) stateLabelHtml.setAttribute('data-state', dataState);
   else stateLabelHtml.removeAttribute('data-state');
 }
 
-function updateClockDom() {
+export function updateClockDom() {
   if (clockHtml) clockHtml.textContent = formatTime(app.elapsed);
 }
 
-function maybeBellTransition(prevState, newState) {
-  if (!app.bellEnabled) return;
-  if (prevState === newState) return;
-  if (newState === 'green') playBeep(440);
-  if (newState === 'yellow') playBeep(660);
-  if (newState === 'red') playBeep(880);
-}
-
-async function frameStep(nowMs, metadata) {
+export async function frameStep(nowMs, metadata) {
   tickTimer(nowMs);
 
-  // Determine state + handle bell transitions.
-  const visState = app.mode === 'idle' ? 'start' : computeState(app.elapsed);
+  const t = thresholds();
+  const visState = app.mode === 'idle' ? 'start' : computeState(app.elapsed, t);
   if (app.mode === 'running' && visState !== app.lastBgState) {
-    maybeBellTransition(app.lastBgState, visState);
+    const freq = bellForTransition(app.lastBgState, visState, app.bellEnabled);
+    if (freq) playBeep(freq);
   }
   app.lastBgState = visState;
 
   // Overtime body class
-  const overtime = app.mode !== 'idle' && isOvertime(app.elapsed);
+  const overtime = app.mode !== 'idle' && isOvertime(app.elapsed, t);
   document.body.classList.toggle('is-overtime', overtime);
 
   // Segment (only if we have a live frame and the speaker view is on screen;
@@ -610,11 +387,21 @@ async function frameStep(nowMs, metadata) {
   scheduleNext();
 }
 
-function scheduleNext() {
+export function scheduleNext() {
   if (typeof videoEl.requestVideoFrameCallback === 'function') {
     videoEl.requestVideoFrameCallback((now, metadata) => frameStep(now, metadata));
   } else {
     requestAnimationFrame((now) => frameStep(now, null));
+  }
+}
+
+// Size the offscreen canvases to the video's true resolution (run on loadedmetadata).
+export function resizeOffscreenCanvases() {
+  const w = videoEl.videoWidth || 1280;
+  const h = videoEl.videoHeight || 720;
+  if (fgCanvas.width !== w || fgCanvas.height !== h) {
+    fgCanvas.width = w;
+    fgCanvas.height = h;
   }
 }
 
@@ -661,11 +448,6 @@ async function releaseWakeLock() {
   } catch {}
   app.wakeLock = null;
 }
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && app.mode === 'running') {
-    acquireWakeLock();
-  }
-});
 
 // ---------- Timer controls ----------
 const btnStartPauseLabel = btnStartPause?.querySelector('.btn-label');
@@ -679,7 +461,7 @@ function setStartPauseLabel() {
   );
 }
 
-function startTimer() {
+export function startTimer() {
   ensureAudio(); // unlock on user gesture
   if (app.mode === 'idle') {
     app.elapsed = 0;
@@ -691,14 +473,14 @@ function startTimer() {
   setStartPauseLabel();
 }
 
-function pauseTimer() {
+export function pauseTimer() {
   if (app.mode !== 'running') return;
   app.mode = 'paused';
   releaseWakeLock();
   setStartPauseLabel();
 }
 
-function resetTimer() {
+export function resetTimer() {
   app.mode = 'idle';
   app.elapsed = 0;
   app.lastBgState = 'start';
@@ -707,120 +489,147 @@ function resetTimer() {
   document.body.classList.remove('is-overtime');
 }
 
-function toggleStartPause() {
+export function toggleStartPause() {
   if (app.mode === 'running') pauseTimer();
   else startTimer();
 }
 
-function toggleMirror() {
+export function toggleMirror() {
   const mirrored = document.body.classList.toggle('is-mirrored');
   btnMirror?.setAttribute('aria-pressed', String(mirrored));
 }
 
-function toggleBell() {
+export function toggleBell() {
   app.bellEnabled = !app.bellEnabled;
   localStorage.setItem(LS.bell, app.bellEnabled ? '1' : '0');
   btnBell?.setAttribute('aria-pressed', String(app.bellEnabled));
 }
 
+function openHelp() {
+  if (setupGuide && !setupGuide.open) setupGuide.showModal();
+}
+
+// Dispatch a resolved keyboard action to its control.
+export function runKeyAction(action) {
+  if (action.startsWith('preset:')) {
+    applyPresetByIndex(parseInt(action.slice(7), 10));
+    return;
+  }
+  switch (action) {
+    case 'toggle':
+      toggleStartPause();
+      break;
+    case 'reset':
+      resetTimer();
+      break;
+    case 'stage-clean':
+      document.body.classList.toggle('stage-clean');
+      break;
+    case 'mirror':
+      toggleMirror();
+      break;
+    case 'bell':
+      toggleBell();
+      break;
+    case 'help':
+      openHelp();
+      break;
+  }
+}
+
+// ---------- Event wiring ----------
+// Registered at import so the DOM contract is live; the boot/IO work is deferred
+// to init().
+presetSelect?.addEventListener('change', () => {
+  const v = presetSelect.value;
+  if (!(PRESETS[v] || v === 'custom')) return;
+  app.preset = v;
+  localStorage.setItem(LS.preset, v);
+  syncPresetUI();
+});
+
+for (const inp of [customGreen, customYellow, customRed]) {
+  inp?.addEventListener('input', () => {
+    const v = readCustomFromInputs();
+    if (v) {
+      app.customTimes = v;
+      localStorage.setItem(LS.customTimes, JSON.stringify(v));
+    }
+  });
+}
+
+cameraSelect?.addEventListener('change', () => {
+  startCamera(cameraSelect.value);
+});
+
 btnStartPause?.addEventListener('click', toggleStartPause);
 btnReset?.addEventListener('click', resetTimer);
 btnMirror?.addEventListener('click', toggleMirror);
 btnBell?.addEventListener('click', toggleBell);
-btnBell?.setAttribute('aria-pressed', String(app.bellEnabled));
-btnHelp?.addEventListener('click', () => {
-  if (setupGuide && !setupGuide.open) setupGuide.showModal();
+btnHelp?.addEventListener('click', openHelp);
+
+document.addEventListener('keydown', (e) => {
+  if (shouldIgnoreKey(document.activeElement, e)) return;
+  const action = keyAction(e.key);
+  if (!action) return;
+  if (action === 'toggle' || action === 'help') e.preventDefault();
+  runKeyAction(action);
 });
 
-// ---------- Keyboard shortcuts ----------
-document.addEventListener('keydown', (e) => {
-  const ae = document.activeElement;
-  const isText =
-    ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable);
-  if (isText) return;
-  if (e.metaKey || e.ctrlKey || e.altKey) return;
-
-  switch (e.key) {
-    case ' ':
-      e.preventDefault();
-      toggleStartPause();
-      break;
-    case 'r':
-    case 'R':
-      resetTimer();
-      break;
-    case 'h':
-    case 'H':
-      document.body.classList.toggle('stage-clean');
-      break;
-    case 'm':
-    case 'M':
-      toggleMirror();
-      break;
-    case 'b':
-    case 'B':
-      toggleBell();
-      break;
-    case '?':
-    case '/':
-      e.preventDefault();
-      if (setupGuide && !setupGuide.open) setupGuide.showModal();
-      break;
-    case '1':
-    case '2':
-    case '3':
-    case '4':
-    case '5': {
-      const idx = parseInt(e.key, 10) - 1;
-      const key = PRESET_KEYS[idx];
-      if (key) {
-        app.preset = key;
-        localStorage.setItem(LS.preset, key);
-        syncPresetUI();
-      }
-      break;
-    }
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && app.mode === 'running') {
+    acquireWakeLock();
   }
 });
 
-// ---------- Boot ----------
+// Synchronous UI initialization (safe to run at import; no IO).
+loadSettings();
+syncPresetUI();
 setStartPauseLabel();
 updateClockDom();
 updateStateLabelDom('start', false);
+btnBell?.setAttribute('aria-pressed', String(app.bellEnabled));
 
-await initSegmenter();
-await listCameras();
-await startCamera(localStorage.getItem(LS.cameraId) || undefined);
+// ---------- Boot ----------
+// Deferred IO: preload backgrounds, init segmenter, start camera, kick the loop,
+// and expose the captureStream/debug surface. Called from main.js in the browser.
+export async function init() {
+  await Promise.all(
+    STATES.map(async (s) => {
+      try {
+        bgImages[s] = await loadImage(BG_SRC[s]);
+      } catch (e) {
+        console.error(`Failed to load background ${s}`, e);
+      }
+    })
+  );
 
-// Once the video is ready, size offscreen canvases to its true resolution.
-videoEl.addEventListener('loadedmetadata', () => {
-  const w = videoEl.videoWidth || 1280;
-  const h = videoEl.videoHeight || 720;
-  if (fgCanvas.width !== w || fgCanvas.height !== h) {
-    fgCanvas.width = w;
-    fgCanvas.height = h;
-  }
-});
+  await initSegmenter();
+  await listCameras();
+  await startCamera(localStorage.getItem(LS.cameraId) || undefined);
 
-// Kick the render loop.
-scheduleNext();
+  // Once the video is ready, size offscreen canvases to its true resolution.
+  videoEl.addEventListener('loadedmetadata', resizeOffscreenCanvases);
 
-// ---------- captureStream / debug surface ----------
-const captureStream = stage.captureStream(30);
-window.__tmtimer = {
-  stream: captureStream,
-  setElapsed(seconds) {
-    app.elapsed = Math.max(0, Number(seconds) || 0);
-    if (app.mode === 'idle') app.mode = 'paused';
-  },
-  getState() {
-    return {
-      mode: app.mode,
-      elapsed: app.elapsed,
-      preset: app.preset,
-      thresholds: activeThresholds(),
-      bgState: app.lastBgState,
-      overtime: isOvertime(app.elapsed),
-    };
-  },
-};
+  scheduleNext();
+
+  // captureStream / debug surface
+  const captureStream = stage.captureStream(30);
+  window.__tmtimer = {
+    stream: captureStream,
+    setElapsed(seconds) {
+      app.elapsed = Math.max(0, Number(seconds) || 0);
+      if (app.mode === 'idle') app.mode = 'paused';
+    },
+    getState() {
+      return {
+        mode: app.mode,
+        elapsed: app.elapsed,
+        preset: app.preset,
+        thresholds: thresholds(),
+        bgState: app.lastBgState,
+        overtime: isOvertime(app.elapsed, thresholds()),
+      };
+    },
+  };
+}
