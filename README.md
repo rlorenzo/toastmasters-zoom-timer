@@ -126,7 +126,12 @@ This is a no-build project — the deployed app is just `index.html`, `styles.cs
 | [Biome](https://biomejs.dev)                                         | JS, CSS, HTML, JSON — format + lint                                             | `biome.json`                 |
 | [markdownlint-cli2](https://github.com/DavidAnson/markdownlint-cli2) | Markdown — lint + auto-fix                                                      | `.markdownlint-cli2.jsonc`   |
 | [fallow](https://fallow.tools)                                       | JS project-graph analysis (unused code, duplication, circular deps, complexity) | `.fallowrc.jsonc`            |
-| [ShellCheck](https://www.shellcheck.net)                             | Shell script static analysis                                                    | (none)                       |
+| [ShellCheck](https://www.shellcheck.net)                             | Shell script static analysis                                                    | (none); system binary        |
+
+ShellCheck is the one tool not installed via npm. Install it with your system
+package manager (`brew install shellcheck`, `apt install shellcheck`, etc.); CI
+runners ship it preinstalled. The lint scripts call whatever `shellcheck` is on
+your `PATH`.
 
 ### Commands
 
