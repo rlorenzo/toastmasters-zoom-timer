@@ -125,7 +125,7 @@ This is a no-build project — the deployed app is just `index.html`, `styles.cs
 |----------------------------------------------------------------------|---------------------------------------------------------------------------------|------------------------------|
 | [Biome](https://biomejs.dev)                                         | JS, CSS, HTML, JSON — format + lint                                             | `biome.json`                 |
 | [markdownlint-cli2](https://github.com/DavidAnson/markdownlint-cli2) | Markdown — lint + auto-fix                                                      | `.markdownlint-cli2.jsonc`   |
-| [fallow](https://fallow.tools)                                       | JS project-graph analysis (unused code, duplication, circular deps, complexity) | `.fallowrc.jsonc`            |
+| [fallow](https://fallow.tools)                                       | JS project-graph analysis: dead code, dep hygiene, circular deps, duplication    | `.fallowrc.jsonc`            |
 | [ShellCheck](https://www.shellcheck.net)                             | Shell script static analysis                                                    | (none); system binary        |
 
 ShellCheck is the one tool not installed via npm. Install it with your system
@@ -145,8 +145,15 @@ npm run fmt        # format only (no lint)
 npm run lint:web      # just biome
 npm run lint:md       # just markdown
 npm run lint:sh       # just shellcheck
-npm run lint:fallow   # just fallow
+npm run lint:fallow   # fallow dead-code + duplication (gates CI)
+
+npm run health        # fallow complexity/maintainability report (advisory, non-gating)
 ```
+
+`lint:fallow` runs fallow's dead-code and duplication analyses (both must pass).
+Its `health` analysis (complexity, maintainability, CRAP risk) is kept separate
+as `npm run health` because it currently flags `app.js`'s existing complexity;
+it is an advisory report rather than a build gate.
 
 ### Pre-commit hook
 

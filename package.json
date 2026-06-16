@@ -10,7 +10,8 @@
     "lint:web": "biome check .",
     "lint:md": "markdownlint-cli2 \"**/*.md\" \"#node_modules\"",
     "lint:sh": "shellcheck serve.sh",
-    "lint:fallow": "fallow dead-code",
+    "lint:fallow": "fallow --skip health",
+    "health": "fallow health",
     "fmt": "biome format --write . && markdownlint-cli2 --fix \"**/*.md\" \"#node_modules\"",
     "fix": "biome check --write . && markdownlint-cli2 --fix \"**/*.md\" \"#node_modules\"",
     "prepare": "husky"
