@@ -13,6 +13,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          # Full history so `fallow audit` can diff against the base branch.
+          fetch-depth: 0
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
@@ -22,3 +25,9 @@ jobs:
       - run: npm ci
 
       - run: npm run lint
+
+      - run: npm test
+
+      # Coverage-driven complexity/CRAP gate: fails on newly introduced complexity,
+      # dead code, or duplication in changed files.
+      - run: npm run health:gate

@@ -15,6 +15,7 @@
       "**/*.jsonc",
       "!node_modules",
       "!images",
+      "!coverage",
       "!**/*.min.*"
     ]
   },
@@ -65,5 +66,21 @@
       "enabled": true,
       "trailingCommas": "none"
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["test/**"],
+      "linter": {
+        "rules": {
+          "performance": {
+            "useTopLevelRegex": "off",
+            "noDelete": "off"
+          },
+          "security": {
+            "noSecrets": "off"
+          }
+        }
+      }
+    }
+  ]
 }

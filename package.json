@@ -11,7 +11,11 @@
     "lint:md": "markdownlint-cli2 \"**/*.md\" \"#node_modules\"",
     "lint:sh": "shellcheck serve.sh",
     "lint:fallow": "fallow --skip health",
-    "health": "fallow health",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "coverage": "vitest run --coverage",
+    "health": "npm run coverage && fallow health --coverage coverage/coverage-final.json --report-only",
+    "health:gate": "npm run coverage && fallow audit --gate new-only --coverage coverage/coverage-final.json",
     "fmt": "biome format --write . && markdownlint-cli2 --fix \"**/*.md\" \"#node_modules\"",
     "fix": "biome check --write . && markdownlint-cli2 --fix \"**/*.md\" \"#node_modules\"",
     "prepare": "husky"
@@ -23,10 +27,13 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.16",
+    "@vitest/coverage-istanbul": "^4.1.8",
     "fallow": "^2.89.0",
     "husky": "^9.1.7",
+    "jsdom": "^29.1.1",
     "lint-staged": "^17.0.7",
-    "markdownlint-cli2": "^0.22.1"
+    "markdownlint-cli2": "^0.22.1",
+    "vitest": "^4.1.8"
   },
   "overrides": {
     "js-yaml": "4.2.0",
