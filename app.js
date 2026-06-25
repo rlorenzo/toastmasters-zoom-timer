@@ -21,10 +21,13 @@ import {
   LS,
   PRESET_KEYS,
   PRESETS,
+  personBoundingBox,
+  presetDisplayName,
   readSettings,
   renderStage,
   STATES,
   shouldIgnoreKey,
+  smoothBox,
   stateLabel,
   validateCustomTimes,
 } from './timer-core.js';
@@ -62,7 +65,6 @@ const stageCtx = stage ? stage.getContext('2d', { alpha: false }) : null;
 const setupGuide = $('setup-guide');
 const btnStartPause = $('btn-start-pause');
 const btnReset = $('btn-reset');
-const btnMirror = $('btn-mirror');
 const btnBell = $('btn-bell');
 const btnHelp = $('btn-help');
 const cameraSelect = $('camera-select');
@@ -100,7 +102,14 @@ export const app = {
   stream: null,
   segmenter: null,
   audioCtx: null,
+  personBox: null, // smoothed normalized silhouette box for speaker framing
+  missedFrames: 0, // consecutive frames with no detected silhouette
 };
+
+// Drop a stale silhouette box after this many consecutive person-less frames
+// (~2s at 30fps) so the speaker view falls back to a plain cover fit and can
+// re-enter cleanly instead of staying locked to where someone last stood.
+const MAX_MISSED_FRAMES = 60;
 
 function thresholds() {
   return activeThresholds(app.preset, app.customTimes);
@@ -269,9 +278,11 @@ async function initSegmenter() {
 // to be the foreground (segmented person) on a transparent background.
 export async function segmentFrame(video, tMs) {
   if (!app.segmenter) {
-    // No segmenter: draw raw video (no background removal).
+    // No segmenter: draw raw video (no background removal). Without a mask we
+    // can't frame by silhouette, so fall back to a plain cover fit.
     fgCtx.clearRect(0, 0, fgCanvas.width, fgCanvas.height);
     fgCtx.drawImage(video, 0, 0, fgCanvas.width, fgCanvas.height);
+    app.personBox = null;
     return;
   }
 
@@ -303,6 +314,17 @@ export async function segmentFrame(video, tMs) {
   buildMaskAlpha(data, maskImageData.data);
   maskCtx.putImageData(maskImageData, 0, 0);
 
+  // Track the silhouette so the compositor can frame the speaker on the floor of
+  // the stage instead of floating mid-frame. Keep the last good box through brief
+  // tracking dropouts, but release it once the person is gone for a while.
+  const bbox = personBoundingBox(data, w, h);
+  if (bbox) {
+    app.personBox = smoothBox(app.personBox, bbox);
+    app.missedFrames = 0;
+  } else if (++app.missedFrames > MAX_MISSED_FRAMES) {
+    app.personBox = null;
+  }
+
   // Build foreground: draw video, then keep only mask region. A 1px blur on the
   // upscaled mask softens aliasing without smearing the silhouette.
   fgCtx.save();
@@ -325,9 +347,11 @@ function renderFrame(nowMs) {
     mode: app.mode,
     elapsed: app.elapsed,
     thresholds: thresholds(),
+    presetLabel: presetDisplayName(app.preset),
     nowMs,
     videoReady: videoEl.readyState >= 2,
     fgCanvas,
+    personBox: app.personBox,
   });
 }
 
@@ -494,11 +518,6 @@ export function toggleStartPause() {
   else startTimer();
 }
 
-export function toggleMirror() {
-  const mirrored = document.body.classList.toggle('is-mirrored');
-  btnMirror?.setAttribute('aria-pressed', String(mirrored));
-}
-
 export function toggleBell() {
   app.bellEnabled = !app.bellEnabled;
   localStorage.setItem(LS.bell, app.bellEnabled ? '1' : '0');
@@ -524,9 +543,6 @@ export function runKeyAction(action) {
       break;
     case 'stage-clean':
       document.body.classList.toggle('stage-clean');
-      break;
-    case 'mirror':
-      toggleMirror();
       break;
     case 'bell':
       toggleBell();
@@ -564,7 +580,6 @@ cameraSelect?.addEventListener('change', () => {
 
 btnStartPause?.addEventListener('click', toggleStartPause);
 btnReset?.addEventListener('click', resetTimer);
-btnMirror?.addEventListener('click', toggleMirror);
 btnBell?.addEventListener('click', toggleBell);
 btnHelp?.addEventListener('click', openHelp);
 
@@ -629,6 +644,9 @@ export async function init() {
         thresholds: thresholds(),
         bgState: app.lastBgState,
         overtime: isOvertime(app.elapsed, thresholds()),
+        // Silhouette framing box (normalized). null => falling back to plain
+        // cover fit because no person mask is available.
+        personBox: app.personBox,
       };
     },
   };

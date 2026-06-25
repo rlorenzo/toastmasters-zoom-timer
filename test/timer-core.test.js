@@ -8,15 +8,20 @@ import {
   drawBigTimer,
   drawRoundedRect,
   drawSpeakerCover,
+  drawSpeakerFramed,
+  drawTimingRules,
   formatTime,
   getUserMediaWithFallback,
   isOvertime,
   keyAction,
   PRESETS,
   parseTime,
+  personBoundingBox,
+  presetDisplayName,
   readSettings,
   renderStage,
   shouldIgnoreKey,
+  smoothBox,
   stateLabel,
   validateCustomTimes,
 } from '../timer-core.js';
@@ -36,6 +41,8 @@ function makeCtx() {
     'beginPath',
     'moveTo',
     'arcTo',
+    'rect',
+    'clip',
     'closePath',
     'fill',
     'stroke',
@@ -289,6 +296,99 @@ describe('drawSpeakerCover', () => {
   it('skips a zero-size source', () => {
     const ctx = makeCtx();
     drawSpeakerCover(ctx, { width: 0, height: 0 }, zone);
+    expect(ctx.calls).toHaveLength(0);
+  });
+});
+
+describe('personBoundingBox', () => {
+  it('returns the normalized box around person pixels', () => {
+    // 4x4 mask with person (class 1) in a 2x2 block at cols 1-2, rows 1-2.
+    const w = 4;
+    const h = 4;
+    const m = new Uint8Array(w * h);
+    m[1 * w + 1] = 1;
+    m[1 * w + 2] = 1;
+    m[2 * w + 1] = 1;
+    m[2 * w + 2] = 4;
+    const box = personBoundingBox(m, w, h);
+    expect(box).toEqual({ x: 0.25, y: 0.25, w: 0.5, h: 0.5 });
+  });
+  it('returns null when no person pixels exist', () => {
+    expect(personBoundingBox(new Uint8Array(16), 4, 4)).toBeNull();
+  });
+});
+
+describe('smoothBox', () => {
+  const a = { x: 0, y: 0, w: 1, h: 1 };
+  const b = { x: 1, y: 1, w: 0, h: 0 };
+  it('eases from prev toward next by alpha', () => {
+    expect(smoothBox(a, b, 0.5)).toEqual({ x: 0.5, y: 0.5, w: 0.5, h: 0.5 });
+  });
+  it('returns next when there is no prev, and keeps prev when next is null', () => {
+    expect(smoothBox(null, b)).toBe(b);
+    expect(smoothBox(a, null)).toBe(a);
+  });
+});
+
+describe('drawSpeakerFramed', () => {
+  const zone = { x: 140, y: 200, w: 1640, h: 772 };
+  const src = { width: 1280, height: 720 };
+  it('clips to the zone and draws the scaled source', () => {
+    const ctx = makeCtx();
+    drawSpeakerFramed(ctx, src, zone, { x: 0.3, y: 0.2, w: 0.4, h: 0.6 });
+    expect(ctx.names()).toContain('clip');
+    const draw = ctx.calls.find((c) => c[0] === 'drawImage');
+    expect(draw).toBeTruthy();
+    // The person's bottom lands on the floor of the zone: dy + s*personBottom == zone bottom.
+    const [, , dx, dy, dw, dh] = draw;
+    const s = dw / src.width;
+    const personBottom = (0.2 + 0.6) * src.height;
+    expect(dy + s * personBottom).toBeCloseTo(zone.y + zone.h, 3);
+    // And horizontally centered on the person.
+    const personCx = (0.3 + 0.4 / 2) * src.width;
+    expect(dx + s * personCx).toBeCloseTo(zone.x + zone.w / 2, 3);
+    expect(dh).toBeCloseTo(src.height * s, 3);
+  });
+  it('no-ops without a box, a sized source, or a zero-area box', () => {
+    const ctx = makeCtx();
+    drawSpeakerFramed(ctx, src, zone, null);
+    drawSpeakerFramed(ctx, { width: 0, height: 0 }, zone, { x: 0, y: 0, w: 1, h: 1 });
+    drawSpeakerFramed(ctx, src, zone, { x: 0.5, y: 0.5, w: 0, h: 0 });
+    expect(ctx.calls).toHaveLength(0);
+  });
+});
+
+describe('presetDisplayName', () => {
+  it('maps known presets to friendly names', () => {
+    expect(presetDisplayName('prepared')).toBe('Prepared Speech');
+    expect(presetDisplayName('table-topics')).toBe('Table Topics');
+  });
+  it('falls back to Custom for unknown/custom presets', () => {
+    expect(presetDisplayName('custom')).toBe('Custom');
+    expect(presetDisplayName('nope')).toBe('Custom');
+  });
+});
+
+describe('drawTimingRules', () => {
+  it('draws the category label and a chip per threshold', () => {
+    const ctx = makeCtx();
+    drawTimingRules(ctx, { label: 'Prepared Speech', thresholds: PRESETS.prepared });
+    const texts = ctx.calls.filter((c) => c[0] === 'fillText').map((c) => c[1]);
+    expect(texts).toContain('Prepared Speech');
+    expect(texts).toEqual(expect.arrayContaining(['5:00', '6:00', '7:00']));
+    // Each chip is a rounded-rect pill.
+    expect(ctx.names().filter((n) => n === 'arcTo').length).toBeGreaterThanOrEqual(12);
+  });
+  it('renders chips without a label', () => {
+    const ctx = makeCtx();
+    drawTimingRules(ctx, { thresholds: PRESETS.evaluation });
+    const texts = ctx.calls.filter((c) => c[0] === 'fillText').map((c) => c[1]);
+    expect(texts).not.toContain('Prepared Speech');
+    expect(texts).toEqual(expect.arrayContaining(['2:00', '2:30', '3:00']));
+  });
+  it('no-ops without thresholds', () => {
+    const ctx = makeCtx();
+    drawTimingRules(ctx, { label: 'Prepared Speech' });
     expect(ctx.calls).toHaveLength(0);
   });
 });
