@@ -19,7 +19,7 @@ export const PRESET_KEYS = ['table-topics', 'evaluation', 'ice-breaker', 'prepar
 export const DEFAULT_PRESET = 'prepared';
 
 // Human-readable category names for the on-stage timing-rules header.
-export const PRESET_LABELS = {
+const PRESET_LABELS = {
   'table-topics': 'Table Topics',
   evaluation: 'Evaluation',
   'ice-breaker': 'Ice Breaker',
