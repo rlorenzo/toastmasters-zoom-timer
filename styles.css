@@ -149,11 +149,6 @@ body {
   object-fit: contain;
 }
 
-/* Mirror state — scaleX only on the canvas, not on the overlay or sidebar */
-body.is-mirrored #stage {
-  transform: scaleX(-1);
-}
-
 /* ── Overtime animation ──────────────────────────────────── */
 @keyframes red-flash {
   0%,
@@ -539,7 +534,7 @@ kbd {
   background: rgba(0, 0, 0, 0.12);
 }
 
-/* Icon buttons (mirror, bell) */
+/* Icon buttons (bell) */
 .btn-icon {
   flex: 1;
   flex-direction: column;

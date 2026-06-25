@@ -51,7 +51,7 @@ This path is lower quality than the OBS route but requires no additional softwar
 | Space | Start / Pause                 |
 | R     | Reset                         |
 | H     | Toggle controls (presenter mode) |
-| M     | Mirror local preview          |
+| B     | Toggle bell                   |
 | ?     | Open setup guide              |
 | 1–5   | Jump to preset                |
 

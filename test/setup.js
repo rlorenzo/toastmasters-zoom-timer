@@ -15,6 +15,8 @@ function makeCtxStub() {
     'beginPath',
     'moveTo',
     'arcTo',
+    'rect',
+    'clip',
     'closePath',
     'fill',
     'stroke',
@@ -42,7 +44,6 @@ document.body.innerHTML = `
   <aside id="sidebar"></aside>
   <button id="btn-start-pause"><span class="btn-label">Start</span></button>
   <button id="btn-reset"></button>
-  <button id="btn-mirror"></button>
   <button id="btn-bell"></button>
   <button id="btn-help"></button>
   <select id="camera-select"></select>

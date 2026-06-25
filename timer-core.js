@@ -18,18 +18,48 @@ export const PRESETS = {
 export const PRESET_KEYS = ['table-topics', 'evaluation', 'ice-breaker', 'prepared', 'long-speech'];
 export const DEFAULT_PRESET = 'prepared';
 
-// Speaker compositing region inside the 1920x1080 stage — centered within the
-// background's inner frame, below the logo/label bar. Internal to the compositor.
-const SPEAKER_ZONE = { x: 140, y: 200, w: 1640, h: 760 };
+// Human-readable category names for the on-stage timing-rules header.
+export const PRESET_LABELS = {
+  'table-topics': 'Table Topics',
+  evaluation: 'Evaluation',
+  'ice-breaker': 'Ice Breaker',
+  prepared: 'Prepared Speech',
+  'long-speech': 'Long Speech',
+  custom: 'Custom',
+};
+
+export function presetDisplayName(preset) {
+  return PRESET_LABELS[preset] || PRESET_LABELS.custom;
+}
+
+// Speaker compositing region inside the 1920x1080 stage — spans from just below
+// the logo/label bar all the way down to the very bottom edge of the whole frame
+// (y=1080), so the speaker is planted on the floor of the entire output, not just
+// the decorative inner border. Internal to the compositor.
+const SPEAKER_ZONE = { x: 140, y: 200, w: 1640, h: 880 };
 const CLOCK_BADGE = { x: 48, y: 960, w: 280, h: 80, r: 16 };
+
+// Timing-rules header — right-aligned in the top bar opposite the logo, clearing
+// the baked-in state label that lives top-left on the colored backgrounds.
+const RULES_HEADER = { rightX: 1764, centerY: 120 };
+
+// Chip background + ink per threshold (signal-color convention, legible on any
+// flood background).
+const CHIP_STYLE = {
+  green: { bg: '#2b9e3f', ink: '#04210b' },
+  yellow: { bg: '#e8c84a', ink: '#241f00' },
+  red: { bg: '#e0443e', ink: '#ffffff' },
+};
 
 const OVERTIME_MARGIN = 30; // seconds past red counts as overtime
 const STAGE_W = 1920;
 const STAGE_H = 1080;
 
 // Canvas can't read CSS custom properties, so the on-stage readouts carry their
-// own font family (mirrors --font-mono in styles.css).
+// own font family (mirrors --font-mono / --font-display in styles.css).
 const MONO_FONT = 'ui-monospace, "SF Mono", Menlo, Consolas, monospace';
+const UI_FONT =
+  'Montserrat, "Source Sans 3", system-ui, -apple-system, "Segoe UI", Arial, sans-serif';
 
 export const LS = {
   cameraId: 'tmtimer.cameraId',
@@ -51,8 +81,6 @@ const KEY_ACTIONS = {
   R: 'reset',
   h: 'stage-clean',
   H: 'stage-clean',
-  m: 'mirror',
-  M: 'mirror',
   b: 'bell',
   B: 'bell',
   '?': 'help',
@@ -229,8 +257,9 @@ export function drawRoundedRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
+// Aspect-preserving cover fit centered in `zone`. Fallback used until a person
+// silhouette has been detected; once one is, drawSpeakerFramed takes over.
 export function drawSpeakerCover(ctx, src, zone) {
-  // Aspect-preserving cover fit centered in zone.
   const sw = src.width;
   const sh = src.height;
   if (!sw || !sh) return;
@@ -251,6 +280,82 @@ export function drawSpeakerCover(ctx, src, zone) {
     sy = (sh - syh) / 2;
   }
   ctx.drawImage(src, sx, sy, sxw, syh, zone.x, zone.y, zone.w, zone.h);
+}
+
+// Bounding box (normalized 0..1) of the person pixels in a multiclass category
+// mask: class 0 is background, anything else is person. Returns null when no
+// person is present. Lets the compositor frame the speaker by their actual
+// silhouette rather than the raw camera frame, which may show desk/room below.
+export function personBoundingBox(catData, w, h) {
+  let minX = w;
+  let minY = h;
+  let maxX = -1;
+  let maxY = -1;
+  for (let row = 0; row < h; row++) {
+    const off = row * w;
+    for (let col = 0; col < w; col++) {
+      if (catData[off + col] !== 0) {
+        minX = Math.min(minX, col);
+        maxX = Math.max(maxX, col);
+        minY = Math.min(minY, row);
+        maxY = Math.max(maxY, row);
+      }
+    }
+  }
+  if (maxX < 0) return null;
+  return {
+    x: minX / w,
+    y: minY / h,
+    w: (maxX - minX + 1) / w,
+    h: (maxY - minY + 1) / h,
+  };
+}
+
+// Exponential blend between the previous and next boxes so the framing eases
+// rather than jumping as the silhouette wobbles frame to frame. Keeps the last
+// good box when the person is momentarily lost (next is null).
+export function smoothBox(prev, next, alpha = 0.15) {
+  if (!next) return prev;
+  if (!prev) return next;
+  const f = (a, b) => a + (b - a) * alpha;
+  return {
+    x: f(prev.x, next.x),
+    y: f(prev.y, next.y),
+    w: f(prev.w, next.w),
+    h: f(prev.h, next.h),
+  };
+}
+
+// Draw the segmented speaker scaled so their silhouette fills `fill` of the zone
+// height, horizontally centered, with their feet/torso planted on the floor of
+// the zone (no gap beneath). `box` is the normalized person bounding box within
+// `src`. Overflow is clipped to the zone so nothing paints over the frame.
+export function drawSpeakerFramed(ctx, src, zone, box, opts = {}) {
+  const sw = src.width;
+  const sh = src.height;
+  if (!sw || !sh || !box) return;
+  const { fill = 0.92, minScale = 0.4, maxScale = 2.6, bottomMargin = 0 } = opts;
+  const bw = box.w * sw;
+  const bh = box.h * sh;
+  if (bw <= 0 || bh <= 0) return;
+
+  // Fill the zone height, but never let the silhouette overflow the zone width,
+  // and keep the zoom within sane bounds.
+  let s = (zone.h * fill) / bh;
+  s = Math.min(s, zone.w / bw);
+  s = Math.max(minScale, Math.min(maxScale, s));
+
+  const personCx = (box.x + box.w / 2) * sw;
+  const personBottom = (box.y + box.h) * sh;
+  const dx = zone.x + zone.w / 2 - s * personCx;
+  const dy = zone.y + zone.h - bottomMargin - s * personBottom;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(zone.x, zone.y, zone.w, zone.h);
+  ctx.clip();
+  ctx.drawImage(src, dx, dy, sw * s, sh * s);
+  ctx.restore();
 }
 
 // The backgrounds flood the whole frame with the state color and bake in their
@@ -297,11 +402,77 @@ export function drawBigTimer(ctx, zone, text, overtime) {
   ctx.restore();
 }
 
+// Draw the speech category + Green/Yellow/Red threshold chips, right-aligned in
+// the stage's top bar. Gives the audience the timing rules at a glance without
+// crowding the logo or the baked-in state label. `label` is optional; the chips
+// render from `thresholds` alone.
+export function drawTimingRules(ctx, opts) {
+  const { label, thresholds, rightX = RULES_HEADER.rightX, centerY = RULES_HEADER.centerY } = opts;
+  if (!thresholds) return;
+
+  const catFont = `700 36px ${UI_FONT}`;
+  const chipFont = `700 30px ${MONO_FONT}`;
+  const chipH = 50;
+  const chipPadX = 16;
+  const chipGap = 12;
+  const catGap = 24;
+
+  const chips = [
+    { ...CHIP_STYLE.green, text: formatTime(thresholds.green) },
+    { ...CHIP_STYLE.yellow, text: formatTime(thresholds.yellow) },
+    { ...CHIP_STYLE.red, text: formatTime(thresholds.red) },
+  ];
+
+  ctx.save();
+  ctx.textBaseline = 'middle';
+
+  // Measure the whole group so it can hang off the right edge.
+  ctx.font = chipFont;
+  const chipWidths = chips.map((c) => ctx.measureText(c.text).width + chipPadX * 2);
+  ctx.font = catFont;
+  const catWidth = label ? ctx.measureText(label).width : 0;
+  const total =
+    (label ? catWidth + catGap : 0) +
+    chipWidths.reduce((a, w) => a + w, 0) +
+    chipGap * (chips.length - 1);
+
+  let x = rightX - total;
+
+  if (label) {
+    // Own save/restore so the drop shadow doesn't bleed onto the chips.
+    ctx.save();
+    ctx.font = catFont;
+    ctx.textAlign = 'left';
+    ctx.shadowColor = 'rgba(0,0,0,0.55)';
+    ctx.shadowBlur = 4;
+    ctx.shadowOffsetY = 1;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(label, x, centerY);
+    ctx.restore();
+    x += catWidth + catGap;
+  }
+
+  ctx.font = chipFont;
+  ctx.textAlign = 'center';
+  for (let i = 0; i < chips.length; i++) {
+    const w = chipWidths[i];
+    drawRoundedRect(ctx, x, centerY - chipH / 2, w, chipH, chipH / 2);
+    ctx.fillStyle = chips[i].bg;
+    ctx.fill();
+    ctx.fillStyle = chips[i].ink;
+    ctx.fillText(chips[i].text, x + w / 2, centerY + 1);
+    x += w + chipGap;
+  }
+
+  ctx.restore();
+}
+
 // Composite one full stage frame onto `ctx`. All inputs are passed in so this is
 // pure with respect to a recording-stub context:
-//   { images, mode, elapsed, thresholds, nowMs, videoReady, fgCanvas }
+//   { images, mode, elapsed, thresholds, presetLabel, nowMs, videoReady, fgCanvas, personBox }
 export function renderStage(ctx, opts) {
-  const { images, mode, elapsed, thresholds, nowMs, videoReady, fgCanvas } = opts;
+  const { images, mode, elapsed, thresholds, presetLabel, nowMs, videoReady, fgCanvas, personBox } =
+    opts;
 
   // Background
   const state = mode === 'idle' ? 'start' : computeState(elapsed, thresholds);
@@ -321,8 +492,15 @@ export function renderStage(ctx, opts) {
   if (showBigTimer) {
     drawBigTimer(ctx, SPEAKER_ZONE, formatTime(elapsed), overtime);
   } else if (videoReady && fgCanvas.width) {
-    drawSpeakerCover(ctx, fgCanvas, SPEAKER_ZONE);
+    // Prefer silhouette-aware framing (speaker planted on the floor, no gap);
+    // fall back to a plain cover fit until a person is detected.
+    if (personBox) drawSpeakerFramed(ctx, fgCanvas, SPEAKER_ZONE, personBox);
+    else drawSpeakerCover(ctx, fgCanvas, SPEAKER_ZONE);
   }
+
+  // Timing-rules header — drawn over the background in every mode for constant
+  // audience context.
+  drawTimingRules(ctx, { label: presetLabel, thresholds });
 
   // Clock badge — only shown while the big timer is not taking the stage.
   if (!showBigTimer) {
