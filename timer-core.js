@@ -56,7 +56,7 @@ const STAGE_W = 1920;
 const STAGE_H = 1080;
 
 // Canvas can't read CSS custom properties, so the on-stage readouts carry their
-// own font family (mirrors --font-mono / --font-display in styles.css).
+// own font family, kept close to --font-mono / --font-display in styles.css.
 const MONO_FONT = 'ui-monospace, "SF Mono", Menlo, Consolas, monospace';
 const UI_FONT =
   'Montserrat, "Source Sans 3", system-ui, -apple-system, "Segoe UI", Arial, sans-serif';
