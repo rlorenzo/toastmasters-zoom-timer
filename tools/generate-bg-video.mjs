@@ -22,12 +22,10 @@
 // Flags: --layout=corner|center (default: both), --tail=SEC (overtime after red,
 // default 60), --fps=N (default 15), --out=DIR (default dist/).
 
-import { execFile } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { spawn } from 'node:child_process';
+import { mkdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { promisify } from 'node:util';
 import { createCanvas, GlobalFonts, loadImage } from '@napi-rs/canvas';
 import {
   computeState,
@@ -42,7 +40,6 @@ import {
   presetDisplayName,
 } from '../timer-core.js';
 
-const run = promisify(execFile);
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 const W = 1920;
@@ -210,51 +207,101 @@ function renderFrame(ctx, { bgImages, zone, elapsed, thresholds, label }) {
   drawBigTimer(ctx, zone, formatTime(elapsed), isOvertime(elapsed, thresholds));
 }
 
-async function encode(ff, framePattern, fps, outFile) {
-  await run(ff, [
-    '-y',
-    '-hide_banner',
-    '-loglevel',
-    'error',
-    '-framerate',
-    '1',
-    '-start_number',
-    '0',
-    '-i',
-    framePattern,
-    '-r',
-    String(fps),
-    '-c:v',
-    'libx264',
-    '-preset',
-    'veryfast',
-    '-crf',
-    '24',
-    '-pix_fmt',
-    'yuv420p',
-    '-movflags',
-    '+faststart',
-    outFile,
-  ]);
+// Spawn ffmpeg reading raw RGBA frames from stdin, so encoding runs concurrently
+// with rendering and no per-frame PNGs ever touch the disk. Returns the process
+// and a promise that settles when encoding finishes.
+function spawnEncoder(ff, fps, outFile) {
+  const ffmpeg = spawn(
+    ff,
+    [
+      '-y',
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-f',
+      'rawvideo',
+      '-pix_fmt',
+      'rgba',
+      '-s',
+      `${W}x${H}`,
+      '-framerate',
+      '1',
+      '-i',
+      'pipe:0',
+      '-r',
+      String(fps),
+      '-c:v',
+      'libx264',
+      '-preset',
+      'veryfast',
+      '-crf',
+      '24',
+      '-pix_fmt',
+      'yuv420p',
+      '-movflags',
+      '+faststart',
+      outFile,
+    ],
+    { stdio: ['pipe', 'inherit', 'inherit'] }
+  );
+  // Swallow EPIPE if ffmpeg dies early; the real cause surfaces via `closed`.
+  ffmpeg.stdin.on('error', () => {});
+  const closed = new Promise((res, rej) => {
+    ffmpeg.on('error', rej);
+    ffmpeg.on('close', (code, signal) =>
+      code === 0 ? res() : rej(new Error(`ffmpeg exited (code ${code}, signal ${signal})`))
+    );
+  });
+  return { ffmpeg, closed };
 }
 
-async function generate(ff, name, th, layout, opts, bgImages, tmp) {
+// Write one frame, respecting backpressure (each ~8 MB frame overflows the pipe
+// buffer, so this paces rendering to ffmpeg's consumption). If the stream closes
+// or errors first, reject instead of waiting for a `drain` that will never come,
+// so an early ffmpeg exit surfaces an error rather than hanging the render loop.
+export function writeFrame(stdin, buf) {
+  if (stdin.write(buf)) return Promise.resolve();
+  return new Promise((res, rej) => {
+    const cleanup = () => {
+      stdin.off('drain', onDrain);
+      stdin.off('close', onEnd);
+      stdin.off('error', onEnd);
+    };
+    const onDrain = () => {
+      cleanup();
+      res();
+    };
+    const onEnd = () => {
+      cleanup();
+      rej(new Error('ffmpeg stdin closed before a frame was written'));
+    };
+    stdin.once('drain', onDrain);
+    stdin.once('close', onEnd);
+    stdin.once('error', onEnd);
+  });
+}
+
+async function generate(ff, name, th, layout, opts, bgImages) {
   const total = totalSeconds(th, opts.tail);
   const zone = timerZone(layout);
   const label = presetDisplayName(name);
   const canvas = createCanvas(W, H);
   const ctx = canvas.getContext('2d');
+  const outFile = join(opts.outDir, `tm-timer-${name}-${layout}.mp4`);
 
   // One frame per second (the readout changes once a second); ffmpeg holds each
-  // for a second and resamples to the output fps.
+  // for a second and resamples to the output fps. getImageData is spec RGBA, which
+  // matches the encoder's -pix_fmt rgba exactly.
+  const { ffmpeg, closed } = spawnEncoder(ff, opts.fps, outFile);
   for (let elapsed = 0; elapsed < total; elapsed++) {
     renderFrame(ctx, { bgImages, zone, elapsed, thresholds: th, label });
-    const frame = join(tmp, `f_${String(elapsed).padStart(5, '0')}.png`);
-    writeFileSync(frame, canvas.toBuffer('image/png'));
+    // Slice via the view's own offset/length so it stays correct even if the
+    // canvas ever returns a view into a larger buffer.
+    const { data } = ctx.getImageData(0, 0, W, H);
+    await writeFrame(ffmpeg.stdin, Buffer.from(data.buffer, data.byteOffset, data.byteLength));
   }
-
-  const outFile = join(opts.outDir, `tm-timer-${name}-${layout}.mp4`);
-  await encode(ff, join(tmp, 'f_%05d.png'), opts.fps, outFile);
+  ffmpeg.stdin.end();
+  await closed;
   return { outFile, total };
 }
 
@@ -274,16 +321,11 @@ async function main() {
   registerFonts();
   const bgImages = await loadBackgrounds();
 
-  const tmp = mkdtempSync(join(tmpdir(), 'tmtimer-'));
-  try {
-    for (const [name, th] of jobs) {
-      for (const layout of wantLayouts) {
-        const { outFile, total } = await generate(FFMPEG, name, th, layout, opts, bgImages, tmp);
-        logJob(name, layout, th, total, outFile);
-      }
+  for (const [name, th] of jobs) {
+    for (const layout of wantLayouts) {
+      const { outFile, total } = await generate(FFMPEG, name, th, layout, opts, bgImages);
+      logJob(name, layout, th, total, outFile);
     }
-  } finally {
-    rmSync(tmp, { recursive: true, force: true });
   }
 }
 
