@@ -2,6 +2,39 @@
 
 A browser-based speech timer for Toastmasters meetings on Zoom. Grant your webcam access, pick a speech preset, and the app composites you onto the official Toastmasters virtual background. While idle it shows your segmented webcam; once you start the timer the frame floods green, yellow, then red as your speech crosses each threshold, with a large countdown taking center stage in place of your video so the audience focuses on the time. Everything runs entirely in your browser: no installation, no server, and no file uploads. Your camera feed is processed locally and never leaves your machine; the only outbound requests are to fetch the MediaPipe segmentation runtime and model from public CDNs (jsDelivr and Google).
 
+**Two ways to use it:** run the live web app (below), or skip the setup entirely and [download a ready-made timer video](#zoom-virtual-background-videos-no-setup) to drop straight into Zoom as a virtual background.
+
+---
+
+## Zoom Virtual-Background Videos (no setup)
+
+The quickest way to use the timer: **download a ready-made video and set it as your Zoom virtual background**. No app to run, no OBS, no screen sharing. The background floods green, yellow, then red at the speech's thresholds while a timer counts up and the timing rules sit in the top bar, matching the web app.
+
+There are two layouts for every speech type:
+
+- **`-corner`**: small timer in the top-right with the center kept clear, so you can **keep your webcam on** in front of the background.
+- **`-center`**: big centered timer like the web app, for when your **webcam is off**.
+
+Pick your speech type and click to download (or browse everything on the [release page](https://github.com/rlorenzo/toastmasters-zoom-timer/releases/tag/timer-videos)):
+
+| Speech type     | Green / Yellow / Red | Webcam on (corner) | Webcam off (center) |
+|-----------------|----------------------|--------------------|---------------------|
+| Table Topics    | 1:00 / 1:30 / 2:00   | [download](https://github.com/rlorenzo/toastmasters-zoom-timer/releases/download/timer-videos/tm-timer-table-topics-corner.mp4) | [download](https://github.com/rlorenzo/toastmasters-zoom-timer/releases/download/timer-videos/tm-timer-table-topics-center.mp4) |
+| Evaluation      | 2:00 / 2:30 / 3:00   | [download](https://github.com/rlorenzo/toastmasters-zoom-timer/releases/download/timer-videos/tm-timer-evaluation-corner.mp4) | [download](https://github.com/rlorenzo/toastmasters-zoom-timer/releases/download/timer-videos/tm-timer-evaluation-center.mp4) |
+| Ice Breaker     | 4:00 / 5:00 / 6:00   | [download](https://github.com/rlorenzo/toastmasters-zoom-timer/releases/download/timer-videos/tm-timer-ice-breaker-corner.mp4) | [download](https://github.com/rlorenzo/toastmasters-zoom-timer/releases/download/timer-videos/tm-timer-ice-breaker-center.mp4) |
+| Prepared Speech | 5:00 / 6:00 / 7:00   | [download](https://github.com/rlorenzo/toastmasters-zoom-timer/releases/download/timer-videos/tm-timer-prepared-corner.mp4) | [download](https://github.com/rlorenzo/toastmasters-zoom-timer/releases/download/timer-videos/tm-timer-prepared-center.mp4) |
+| Long Speech     | 8:00 / 9:00 / 10:00  | [download](https://github.com/rlorenzo/toastmasters-zoom-timer/releases/download/timer-videos/tm-timer-long-speech-corner.mp4) | [download](https://github.com/rlorenzo/toastmasters-zoom-timer/releases/download/timer-videos/tm-timer-long-speech-center.mp4) |
+
+To use one in Zoom:
+
+1. Download the MP4 for the speech you are timing.
+2. In Zoom, open **Settings > Background & Effects**, click **+ > Add Video**, and choose the file.
+3. As the speaker begins, select that background so it starts from `0:00`.
+
+> Zoom loops a video virtual background continuously, so each file covers one speaker's run and restarts at `0:00` when it loops. Apply it (or re-select it) as the speaker starts. Each video runs to red plus one minute of overtime.
+
+The videos are rendered from the same code as the web app and refreshed automatically on every release. To build them yourself, see [Generating the videos](#generating-the-videos).
+
 ---
 
 ## Quick Start
@@ -24,6 +57,8 @@ Then:
 ---
 
 ## Getting It Into Zoom
+
+> Want a timer with zero setup? Use a [ready-made video](#zoom-virtual-background-videos-no-setup) as your Zoom virtual background instead, with no OBS or screen sharing. The methods below run the live, interactive web app (your segmented webcam composited onto the background).
 
 ### OBS Studio Virtual Camera (recommended)
 
@@ -118,6 +153,19 @@ Make sure the browser window is visible and not minimized. On macOS, OBS require
 ## Development
 
 This is a no-build project. The deployed app is just `index.html`, `styles.css`, `main.js`, `app.js`, `timer-core.js`, and the four `images/*.jpg`. `timer-core.js` holds the pure logic and compositing (unit-tested), `app.js` is the DOM/IO shell, and `main.js` is the browser entry that boots it. Tooling lives in `package.json` as dev-only dependencies.
+
+### Generating the videos
+
+The Zoom virtual-background videos are produced by `tools/generate-bg-video.mjs`. It renders one frame per second with [`@napi-rs/canvas`](https://github.com/Brooooooklyn/canvas) through the app's own `drawTimingRules`/`drawBigTimer` (so the output matches the web app) and pipes the frames straight to ffmpeg. `.github/workflows/release-videos.yml` regenerates them and refreshes the `timer-videos` release whenever the renderer, presets, fonts, or background art change on `main`.
+
+```bash
+node tools/generate-bg-video.mjs            # both layouts, default preset -> dist/
+node tools/generate-bg-video.mjs all        # both layouts, every preset
+node tools/generate-bg-video.mjs prepared --layout=center
+node tools/generate-bg-video.mjs --green=1:00 --yellow=1:30 --red=2:00   # custom times
+```
+
+Requires ffmpeg on your `PATH` (`brew install ffmpeg`). Output lands in `dist/` (gitignored); the workflow uploads it to the release with `--clobber`, so only the current set is ever stored. The bundled fonts (`fonts/montserrat-bold.ttf`, `fonts/dejavu-sans-mono-bold.ttf`) keep the render identical on any machine.
 
 ### Toolchain
 
