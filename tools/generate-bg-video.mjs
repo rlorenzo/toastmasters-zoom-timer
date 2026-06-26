@@ -248,7 +248,9 @@ function spawnEncoder(ff, fps, outFile) {
   ffmpeg.stdin.on('error', () => {});
   const closed = new Promise((res, rej) => {
     ffmpeg.on('error', rej);
-    ffmpeg.on('close', (code) => (code === 0 ? res() : rej(new Error(`ffmpeg exited ${code}`))));
+    ffmpeg.on('close', (code, signal) =>
+      code === 0 ? res() : rej(new Error(`ffmpeg exited (code ${code}, signal ${signal})`))
+    );
   });
   return { ffmpeg, closed };
 }
@@ -293,7 +295,10 @@ async function generate(ff, name, th, layout, opts, bgImages) {
   const { ffmpeg, closed } = spawnEncoder(ff, opts.fps, outFile);
   for (let elapsed = 0; elapsed < total; elapsed++) {
     renderFrame(ctx, { bgImages, zone, elapsed, thresholds: th, label });
-    await writeFrame(ffmpeg.stdin, Buffer.from(ctx.getImageData(0, 0, W, H).data.buffer));
+    // Slice via the view's own offset/length so it stays correct even if the
+    // canvas ever returns a view into a larger buffer.
+    const { data } = ctx.getImageData(0, 0, W, H);
+    await writeFrame(ffmpeg.stdin, Buffer.from(data.buffer, data.byteOffset, data.byteLength));
   }
   ffmpeg.stdin.end();
   await closed;
