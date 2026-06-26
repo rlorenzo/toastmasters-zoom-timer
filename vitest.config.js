@@ -12,7 +12,7 @@ export default defineConfig({
       provider: 'istanbul',
       reporter: ['text', 'json'],
       reportsDirectory: 'coverage',
-      include: ['app.js', 'timer-core.js', 'main.js'],
+      include: ['app.js', 'timer-core.js', 'main.js', 'tools/generate-bg-video.mjs'],
       // Emit entries for files with no test hits too, so fallow sees real 0%
       // coverage rather than missing data.
       all: true,
