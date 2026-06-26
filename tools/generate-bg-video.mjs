@@ -254,10 +254,29 @@ function spawnEncoder(ff, fps, outFile) {
 }
 
 // Write one frame, respecting backpressure (each ~8 MB frame overflows the pipe
-// buffer, so this paces rendering to ffmpeg's consumption).
-function writeFrame(stdin, buf) {
+// buffer, so this paces rendering to ffmpeg's consumption). If the stream closes
+// or errors first, reject instead of waiting for a `drain` that will never come,
+// so an early ffmpeg exit surfaces an error rather than hanging the render loop.
+export function writeFrame(stdin, buf) {
   if (stdin.write(buf)) return Promise.resolve();
-  return new Promise((res) => stdin.once('drain', res));
+  return new Promise((res, rej) => {
+    const cleanup = () => {
+      stdin.off('drain', onDrain);
+      stdin.off('close', onEnd);
+      stdin.off('error', onEnd);
+    };
+    const onDrain = () => {
+      cleanup();
+      res();
+    };
+    const onEnd = () => {
+      cleanup();
+      rej(new Error('ffmpeg stdin closed before a frame was written'));
+    };
+    stdin.once('drain', onDrain);
+    stdin.once('close', onEnd);
+    stdin.once('error', onEnd);
+  });
 }
 
 async function generate(ff, name, th, layout, opts, bgImages) {

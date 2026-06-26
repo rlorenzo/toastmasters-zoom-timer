@@ -1,3 +1,4 @@
+import { EventEmitter } from 'node:events';
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_PRESET, PRESETS } from '../timer-core.js';
 import {
@@ -6,7 +7,16 @@ import {
   selectJobs,
   timerZone,
   totalSeconds,
+  writeFrame,
 } from '../tools/generate-bg-video.mjs';
+
+// Minimal stand-in for ffmpeg's stdin: write() returns a fixed backpressure
+// signal, and drain/close/error are driven by the test via emit().
+function fakeStdin(writeReturns) {
+  const s = new EventEmitter();
+  s.write = () => writeReturns;
+  return s;
+}
 
 describe('parseArgs', () => {
   it('returns defaults with no args', () => {
@@ -107,5 +117,27 @@ describe('timerZone', () => {
 describe('totalSeconds', () => {
   it('is red plus the overtime tail', () => {
     expect(totalSeconds({ green: 300, yellow: 360, red: 420 }, 60)).toBe(480);
+  });
+});
+
+describe('writeFrame', () => {
+  const buf = Buffer.alloc(4);
+
+  it('resolves immediately when the write is accepted', async () => {
+    await expect(writeFrame(fakeStdin(true), buf)).resolves.toBeUndefined();
+  });
+
+  it('waits for drain under backpressure, then resolves', async () => {
+    const s = fakeStdin(false);
+    const p = writeFrame(s, buf);
+    s.emit('drain');
+    await expect(p).resolves.toBeUndefined();
+  });
+
+  it('rejects (does not hang) if the stream closes before draining', async () => {
+    const s = fakeStdin(false);
+    const p = writeFrame(s, buf);
+    s.emit('close');
+    await expect(p).rejects.toThrow(/closed before a frame/);
   });
 });
