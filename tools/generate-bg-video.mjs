@@ -38,6 +38,7 @@ import {
   PRESETS,
   parseTime,
   presetDisplayName,
+  TIMER_ZONE,
 } from '../timer-core.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -66,7 +67,7 @@ const MONO = join(ROOT, 'fonts/dejavu-sans-mono-bold.ttf');
 // app's running-mode timer zone; corner is a compact top-right block that leaves
 // the middle clear for a webcam speaker.
 const ZONES = {
-  center: { x: 140, y: 200, w: 1640, h: 880 },
+  center: TIMER_ZONE,
   corner: { x: 1300, y: 175, w: 540, h: 220 },
 };
 const LAYOUTS = ['corner', 'center'];

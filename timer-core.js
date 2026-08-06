@@ -39,6 +39,12 @@ export function presetDisplayName(preset) {
 const SPEAKER_ZONE = { x: 140, y: 200, w: 1640, h: 880 };
 const CLOCK_BADGE = { x: 48, y: 960, w: 280, h: 80, r: 16 };
 
+// Big-timer zone — same width as the speaker zone but centered on the stage's
+// vertical midpoint (y=540), so the running clock reads as the middle of the
+// frame instead of riding low where the speaker stands. Exported so the video
+// generator's "center" layout stays identical to the app.
+export const TIMER_ZONE = { x: 140, y: 100, w: 1640, h: 880 };
+
 // Timing-rules header — right-aligned in the top bar opposite the logo, clearing
 // the baked-in state label that lives top-left on the colored backgrounds.
 const RULES_HEADER = { rightX: 1764, centerY: 120 };
@@ -51,7 +57,7 @@ const CHIP_STYLE = {
   red: { bg: '#e0443e', ink: '#ffffff' },
 };
 
-const OVERTIME_MARGIN = 30; // seconds past red counts as overtime
+const OVERTIME_MARGIN = 30; // grace seconds after red; overtime starts one second later
 const STAGE_W = 1920;
 const STAGE_H = 1080;
 
@@ -115,8 +121,12 @@ export function computeState(elapsed, thresholds) {
   return 'red';
 }
 
+// The margin is the last qualifying second, not the first overtime one: a Table
+// Topics speaker (red 2:00) is still in the green-to-red window through 2:30 and
+// only goes overtime at 2:31. Compare the displayed (floored) clock so a
+// fractional 2:30.4 still reads as 2:30.
 export function isOvertime(elapsed, thresholds) {
-  return elapsed >= thresholds.red + OVERTIME_MARGIN;
+  return Math.floor(elapsed) > thresholds.red + OVERTIME_MARGIN;
 }
 
 // ---------- Settings ----------
@@ -367,12 +377,10 @@ export function drawBigTimer(ctx, zone, text, overtime) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
 
-  const labelText = overtime ? 'OVERTIME' : '';
-  const labelReserve = labelText ? zone.h * 0.22 : 0;
-  const timerCenterY = zone.y + (zone.h - labelReserve) / 2;
-  const labelCenterY = zone.y + zone.h - labelReserve / 2;
+  const centerX = zone.x + zone.w / 2;
+  const centerY = zone.y + zone.h / 2;
 
-  let timerFontSize = Math.floor((zone.h - labelReserve) * 0.7);
+  let timerFontSize = Math.floor(zone.h * 0.7);
   ctx.font = `700 ${timerFontSize}px ${MONO_FONT}`;
   const maxWidth = zone.w * 0.9;
   const measured = ctx.measureText(text).width;
@@ -386,17 +394,20 @@ export function drawBigTimer(ctx, zone, text, overtime) {
   ctx.shadowOffsetY = timerFontSize * 0.02;
   ctx.lineWidth = Math.max(2, timerFontSize * 0.03);
   ctx.strokeStyle = 'rgba(0,0,0,0.55)';
-  ctx.strokeText(text, zone.x + zone.w / 2, timerCenterY);
+  ctx.strokeText(text, centerX, centerY);
   ctx.fillStyle = '#fff';
-  ctx.fillText(text, zone.x + zone.w / 2, timerCenterY);
+  ctx.fillText(text, centerX, centerY);
 
-  if (labelText) {
+  if (overtime) {
+    // The label hangs below the digits, offset from their rendered size, so the
+    // clock keeps its centered position when overtime kicks in.
     const labelFontSize = Math.floor(zone.h * 0.12);
+    const labelCenterY = centerY + timerFontSize * 0.5 + labelFontSize * 0.6;
     ctx.font = `800 ${labelFontSize}px ${MONO_FONT}`;
     ctx.lineWidth = Math.max(2, labelFontSize * 0.06);
-    ctx.strokeText(labelText, zone.x + zone.w / 2, labelCenterY);
+    ctx.strokeText('OVERTIME', centerX, labelCenterY);
     ctx.fillStyle = '#fff';
-    ctx.fillText(labelText, zone.x + zone.w / 2, labelCenterY);
+    ctx.fillText('OVERTIME', centerX, labelCenterY);
   }
 
   ctx.restore();
@@ -490,7 +501,7 @@ export function renderStage(ctx, opts) {
   const overtime = showBigTimer && isOvertime(elapsed, thresholds);
 
   if (showBigTimer) {
-    drawBigTimer(ctx, SPEAKER_ZONE, formatTime(elapsed), overtime);
+    drawBigTimer(ctx, TIMER_ZONE, formatTime(elapsed), overtime);
   } else if (videoReady && fgCanvas.width) {
     // Prefer silhouette-aware framing (speaker planted on the floor, no gap);
     // fall back to a plain cover fit until a person is detected.

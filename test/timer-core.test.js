@@ -23,6 +23,7 @@ import {
   shouldIgnoreKey,
   smoothBox,
   stateLabel,
+  TIMER_ZONE,
   validateCustomTimes,
 } from '../timer-core.js';
 
@@ -97,9 +98,12 @@ describe('computeState / isOvertime', () => {
     expect(computeState(420, t)).toBe('red');
     expect(computeState(9999, t)).toBe('red');
   });
-  it('flags overtime at red + margin', () => {
+  it('flags overtime one second past red + margin', () => {
     expect(isOvertime(449, t)).toBe(false);
-    expect(isOvertime(450, t)).toBe(true);
+    // 7:30 is the last qualifying second, not the first overtime one.
+    expect(isOvertime(450, t)).toBe(false);
+    expect(isOvertime(450.9, t)).toBe(false);
+    expect(isOvertime(451, t)).toBe(true);
   });
 });
 
@@ -395,6 +399,22 @@ describe('drawTimingRules', () => {
 
 describe('drawBigTimer', () => {
   const zone = { x: 140, y: 200, w: 1640, h: 760 };
+  const yOf = (ctx, text) => ctx.calls.find((c) => c[0] === 'fillText' && c[1] === text)[3];
+
+  it('centers the timer zone on the stage midline', () => {
+    expect(TIMER_ZONE.y + TIMER_ZONE.h / 2).toBe(540);
+  });
+  it('keeps the digits centered in the zone, overtime or not', () => {
+    const centerY = zone.y + zone.h / 2;
+    const plain = makeCtx();
+    drawBigTimer(plain, zone, '7:30', false);
+    const over = makeCtx();
+    drawBigTimer(over, zone, '7:31', true);
+    expect(yOf(plain, '7:30')).toBe(centerY);
+    expect(yOf(over, '7:31')).toBe(centerY);
+    // ...with the label hanging below them.
+    expect(yOf(over, 'OVERTIME')).toBeGreaterThan(centerY);
+  });
   it('draws just the timer when not overtime', () => {
     const ctx = makeCtx();
     drawBigTimer(ctx, zone, '1:30', false);
