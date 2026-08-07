@@ -59,7 +59,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag=timer-videos
+
+          # The fixed tag plus --clobber means the asset list, the tag and the
+          # release date all look identical whether the videos are current or
+          # months stale. Stamping the source commit into the notes is the only
+          # thing on the page that actually moves, so write it on every run.
+          notes="$RUNNER_TEMP/notes.md"
+          {
+            echo "Auto-generated Zoom virtual-background timer videos, refreshed on every relevant change to main. Two layouts per speech type: \`-corner\` (keep your webcam on) and \`-center\` (webcam off, big timer)."
+            echo
+            echo "Rendered from ${GITHUB_SHA} on $(date -u +'%Y-%m-%d %H:%M UTC')."
+          } > "$notes"
+
           gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" \
             --title "Toastmasters timer virtual backgrounds" \
-            --notes "Auto-generated Zoom virtual-background timer videos, refreshed on every relevant change to main. Two layouts per speech type: \`-corner\` (keep your webcam on) and \`-center\` (webcam off, big timer)."
+            --notes-file "$notes"
           gh release upload "$tag" dist/tm-timer-*.mp4 --clobber
+          gh release edit "$tag" --notes-file "$notes"

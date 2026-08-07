@@ -22,6 +22,7 @@ dist/
 build/
 .cache/
 .fallow/
+.impeccable/
 
 # Test coverage output
 coverage/
