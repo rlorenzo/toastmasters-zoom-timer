@@ -18,6 +18,7 @@ import {
   syncPresetUI,
   toggleBell,
   toggleStartPause,
+  toggleTheme,
   updateClockDom,
   updateStateLabelDom,
 } from '../app.js';
@@ -37,6 +38,7 @@ beforeEach(() => {
     preset: 'prepared',
     customTimes: { green: 300, yellow: 360, red: 420 },
     bellEnabled: false,
+    theme: 'toastmasters',
     stream: null,
     segmenter: null,
     personBox: null,
@@ -77,16 +79,19 @@ describe('loadSettings', () => {
       JSON.stringify({ green: 10, yellow: 20, red: 30 })
     );
     window.localStorage.setItem('tmtimer.bell', '1');
+    window.localStorage.setItem('tmtimer.theme', 'plain');
     loadSettings();
     expect(app.preset).toBe('evaluation');
     expect(app.customTimes).toEqual({ green: 10, yellow: 20, red: 30 });
     expect(app.bellEnabled).toBe(true);
+    expect(app.theme).toBe('plain');
   });
 
   it('keeps defaults when storage is empty', () => {
     loadSettings();
     expect(app.preset).toBe('prepared');
     expect(app.bellEnabled).toBe(false);
+    expect(app.theme).toBe('toastmasters');
   });
 });
 
@@ -177,6 +182,18 @@ describe('timer controls', () => {
     expect(app.mode).toBe('paused');
   });
 
+  it('toggleTheme flips branding, persists, and mirrors onto the DOM', () => {
+    toggleTheme();
+    expect(app.theme).toBe('plain');
+    expect(window.localStorage.getItem('tmtimer.theme')).toBe('plain');
+    expect($('btn-theme').getAttribute('aria-pressed')).toBe('false');
+    expect($('stage-wrap').getAttribute('aria-label')).toMatch(/plain timing background/);
+    toggleTheme();
+    expect(app.theme).toBe('toastmasters');
+    expect($('btn-theme').getAttribute('aria-pressed')).toBe('true');
+    expect($('stage-wrap').getAttribute('aria-label')).toMatch(/Toastmasters timing background/);
+  });
+
   it('toggleBell flips state + persists', () => {
     toggleBell();
     expect(app.bellEnabled).toBe(true);
@@ -206,6 +223,8 @@ describe('runKeyAction', () => {
     expect(app.bellEnabled).toBe(true);
     runKeyAction('stage-clean');
     expect(document.body.classList.contains('stage-clean')).toBe(true);
+    runKeyAction('theme');
+    expect(app.theme).toBe('plain');
     // jsdom doesn't implement <dialog>.showModal; stub it to cover openHelp.
     const guide = $('setup-guide');
     guide.showModal = vi.fn();
@@ -505,6 +524,8 @@ describe('event wiring', () => {
     expect(app.mode).toBe('idle');
     $('btn-bell').click();
     expect(app.bellEnabled).toBe(true);
+    $('btn-theme').click();
+    expect(app.theme).toBe('plain');
     const guide = $('setup-guide');
     guide.open = false;
     guide.showModal = vi.fn();

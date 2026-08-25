@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events';
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_PRESET, PRESETS } from '../timer-core.js';
 import {
+  outFileName,
   parseArgs,
   resolveLayouts,
   selectJobs,
@@ -21,7 +22,7 @@ function fakeStdin(writeReturns) {
 describe('parseArgs', () => {
   it('returns defaults with no args', () => {
     const { opts, custom, positional } = parseArgs([]);
-    expect(opts).toMatchObject({ tail: 60, fps: 15, layout: null });
+    expect(opts).toMatchObject({ tail: 60, fps: 15, layout: null, theme: 'toastmasters' });
     expect(custom).toEqual({});
     expect(positional).toEqual([]);
   });
@@ -43,6 +44,14 @@ describe('parseArgs', () => {
       yellow: 90,
       red: 120,
     });
+  });
+
+  it('selects the logo-free theme', () => {
+    expect(parseArgs(['--theme=plain']).opts.theme).toBe('plain');
+  });
+
+  it('rejects an unknown --theme', () => {
+    expect(() => parseArgs(['--theme=neon'])).toThrow(/toastmasters\|plain/);
   });
 
   it('rejects a bad --layout', () => {
@@ -89,6 +98,13 @@ describe('selectJobs', () => {
     expect(() => selectJobs({ green: 90, yellow: 60, red: 120 }, [])).toThrow(
       /green < yellow < red/
     );
+  });
+});
+
+describe('outFileName', () => {
+  it('keeps the branded and logo-free renders in separate files', () => {
+    expect(outFileName('toastmasters', 'prepared', 'center')).toBe('tm-timer-prepared-center.mp4');
+    expect(outFileName('plain', 'prepared', 'center')).toBe('timer-prepared-center.mp4');
   });
 });
 
