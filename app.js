@@ -62,8 +62,8 @@ const bgImages = {};
 // Fetch any branded background not already in hand. The plain theme never draws
 // them, so this is deferred until something needs them: boot in branded mode, or
 // the first switch back from plain. Already-loaded states are skipped, so
-// repeated calls are cheap; until it resolves, renderStage falls back to a flat
-// neutral fill for a frame or two.
+// repeated calls are cheap; until it resolves, renderStage keeps painting the
+// plain flood for that state, so the stage never drops to a neutral frame.
 function ensureBackgrounds() {
   return Promise.all(
     STATES.filter((s) => !bgImages[s]).map(async (s) => {

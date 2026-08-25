@@ -501,7 +501,7 @@ describe('renderStage', () => {
     expect(ctx.names()).toContain('fillText');
   });
 
-  it('falls back to a flat fill when the background image is missing', () => {
+  it('paints the plain flood when the branded art has not loaded', () => {
     const ctx = makeCtx();
     renderStage(ctx, {
       images: {},
@@ -512,7 +512,9 @@ describe('renderStage', () => {
       videoReady: false,
       fgCanvas,
     });
-    expect(ctx.names()).toContain('fillRect');
+    // The state color still reads correctly instead of a flat neutral fill.
+    expect(ctx.names()).toContain('createRadialGradient');
+    expect(ctx.names()).not.toContain('drawImage');
   });
 
   it('draws the big timer while running', () => {

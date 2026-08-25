@@ -581,11 +581,12 @@ export function renderStage(ctx, opts) {
   const bg = theme === 'plain' ? null : images[state];
   if (bg) {
     ctx.drawImage(bg, 0, 0, STAGE_W, STAGE_H);
-  } else if (theme === 'plain') {
-    drawPlainBackground(ctx, state);
   } else {
-    ctx.fillStyle = '#222';
-    ctx.fillRect(0, 0, STAGE_W, STAGE_H);
+    // Either the plain theme, or the branded art for this state isn't in hand
+    // yet (still loading after a switch back, or its fetch failed). Painting the
+    // flood keeps the stage showing the right timing color either way, which a
+    // flat neutral fill would not.
+    drawPlainBackground(ctx, state);
   }
 
   // Once the timer starts the focus shifts to the clock: the speaker zone shows
