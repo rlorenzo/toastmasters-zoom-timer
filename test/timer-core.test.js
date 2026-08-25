@@ -6,6 +6,7 @@ import {
   cameraErrorMessage,
   computeState,
   drawBigTimer,
+  drawPlainBackground,
   drawRoundedRect,
   drawSpeakerCover,
   drawSpeakerFramed,
@@ -13,6 +14,7 @@ import {
   formatTime,
   getUserMediaWithFallback,
   isOvertime,
+  isTheme,
   keyAction,
   PRESETS,
   parseTime,
@@ -53,8 +55,13 @@ function makeCtx() {
     'fillText',
     'putImageData',
     'clearRect',
+    'strokeRect',
   ];
   for (const m of methods) ctx[m] = (...args) => calls.push([m, ...args]);
+  ctx.createRadialGradient = (...args) => {
+    calls.push(['createRadialGradient', ...args]);
+    return { addColorStop: () => {} };
+  };
   return ctx;
 }
 
@@ -142,6 +149,10 @@ describe('readSettings', () => {
       bellEnabled: true,
     });
   });
+  it('reads a valid theme and ignores an unknown one', () => {
+    expect(readSettings(store({ 'tmtimer.theme': 'plain' })).theme).toBe('plain');
+    expect(readSettings(store({ 'tmtimer.theme': 'bogus' })).theme).toBeUndefined();
+  });
   it('accepts the custom preset keyword', () => {
     expect(readSettings(store({ 'tmtimer.preset': 'custom' })).preset).toBe('custom');
   });
@@ -193,6 +204,8 @@ describe('keyAction', () => {
     expect(keyAction('r')).toBe('reset');
     expect(keyAction('R')).toBe('reset');
     expect(keyAction('/')).toBe('help');
+    expect(keyAction('l')).toBe('theme');
+    expect(keyAction('L')).toBe('theme');
   });
   it('returns null for unbound keys', () => {
     expect(keyAction('6')).toBeNull();
@@ -436,6 +449,37 @@ describe('drawBigTimer', () => {
   });
 });
 
+describe('isTheme', () => {
+  it('accepts the two known themes only', () => {
+    expect(isTheme('toastmasters')).toBe(true);
+    expect(isTheme('plain')).toBe(true);
+    expect(isTheme('rainbow')).toBe(false);
+    expect(isTheme(null)).toBe(false);
+  });
+});
+
+describe('drawPlainBackground', () => {
+  it('floods the frame, frames it, and labels the state — no image drawn', () => {
+    const ctx = makeCtx();
+    drawPlainBackground(ctx, 'green');
+    expect(ctx.names()).toContain('createRadialGradient');
+    expect(ctx.names()).toContain('fillRect');
+    expect(ctx.names()).toContain('strokeRect');
+    expect(ctx.names()).not.toContain('drawImage');
+    const fills = ctx.calls.filter((c) => c[0] === 'fillText').map((c) => c[1]);
+    expect(fills).toContain('GREEN');
+  });
+
+  it('labels the neutral state START and falls back for an unknown state', () => {
+    const start = makeCtx();
+    drawPlainBackground(start, 'start');
+    expect(start.calls.filter((c) => c[0] === 'fillText').map((c) => c[1])).toContain('START');
+    const unknown = makeCtx();
+    drawPlainBackground(unknown, 'chartreuse');
+    expect(unknown.calls.filter((c) => c[0] === 'fillText').map((c) => c[1])).toContain('START');
+  });
+});
+
 describe('renderStage', () => {
   const thresholds = PRESETS.prepared;
   const images = { start: { width: 1 }, green: { width: 1 }, red: { width: 1 } };
@@ -484,6 +528,41 @@ describe('renderStage', () => {
     });
     const fills = ctx.calls.filter((c) => c[0] === 'fillText').map((c) => c[1]);
     expect(fills).toContain('5:10');
+  });
+
+  it('paints the plain background instead of the branded art', () => {
+    const ctx = makeCtx();
+    renderStage(ctx, {
+      images,
+      theme: 'plain',
+      mode: 'running',
+      elapsed: 310,
+      thresholds,
+      nowMs: 0,
+      videoReady: true,
+      fgCanvas,
+    });
+    // No background JPEG is composited, but the timing readouts still render.
+    expect(ctx.names()).not.toContain('drawImage');
+    const fills = ctx.calls.filter((c) => c[0] === 'fillText').map((c) => c[1]);
+    expect(fills).toContain('5:10');
+    expect(fills).toContain('GREEN');
+  });
+
+  it('keeps the segmented speaker on the plain background while idle', () => {
+    const ctx = makeCtx();
+    renderStage(ctx, {
+      images,
+      theme: 'plain',
+      mode: 'idle',
+      elapsed: 0,
+      thresholds,
+      nowMs: 0,
+      videoReady: true,
+      fgCanvas,
+    });
+    // The only drawImage is the speaker; the background came from the painter.
+    expect(ctx.calls.filter((c) => c[0] === 'drawImage')).toHaveLength(1);
   });
 
   it('adds the overtime pulse while running past red+margin', () => {

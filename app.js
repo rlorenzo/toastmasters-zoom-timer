@@ -14,6 +14,7 @@ import {
   cameraErrorMessage,
   computeState,
   DEFAULT_PRESET,
+  DEFAULT_THEME,
   formatTime,
   getUserMediaWithFallback,
   isOvertime,
@@ -58,6 +59,23 @@ const BG_SRC = {
 };
 const bgImages = {};
 
+// Fetch any branded background not already in hand. The plain theme never draws
+// them, so this is deferred until something needs them: boot in branded mode, or
+// the first switch back from plain. Already-loaded states are skipped, so
+// repeated calls are cheap; until it resolves, renderStage falls back to a flat
+// neutral fill for a frame or two.
+function ensureBackgrounds() {
+  return Promise.all(
+    STATES.filter((s) => !bgImages[s]).map(async (s) => {
+      try {
+        bgImages[s] = await loadImage(BG_SRC[s]);
+      } catch (e) {
+        console.error(`Failed to load background ${s}`, e);
+      }
+    })
+  );
+}
+
 // ---------- DOM ----------
 const videoEl = $('video-source');
 const stage = $('stage');
@@ -67,6 +85,8 @@ const btnStartPause = $('btn-start-pause');
 const btnReset = $('btn-reset');
 const btnBell = $('btn-bell');
 const btnHelp = $('btn-help');
+const btnTheme = $('btn-theme');
+const stageWrap = $('stage-wrap');
 const cameraSelect = $('camera-select');
 const presetSelect = $('preset-select');
 const customGreen = $('custom-green');
@@ -98,6 +118,7 @@ export const app = {
   preset: DEFAULT_PRESET,
   customTimes: { green: 300, yellow: 360, red: 420 },
   bellEnabled: false,
+  theme: DEFAULT_THEME, // 'toastmasters' (branded art) | 'plain' (logo-free)
   wakeLock: null,
   stream: null,
   segmenter: null,
@@ -139,6 +160,7 @@ export function loadSettings() {
   if (s.preset) app.preset = s.preset;
   if (s.customTimes) app.customTimes = s.customTimes;
   app.bellEnabled = Boolean(s.bellEnabled);
+  if (s.theme) app.theme = s.theme;
 }
 
 // ---------- Preset / custom UI binding ----------
@@ -344,6 +366,7 @@ export async function segmentFrame(video, tMs) {
 function renderFrame(nowMs) {
   renderStage(stageCtx, {
     images: bgImages,
+    theme: app.theme,
     mode: app.mode,
     elapsed: app.elapsed,
     thresholds: thresholds(),
@@ -524,6 +547,28 @@ export function toggleBell() {
   btnBell?.setAttribute('aria-pressed', String(app.bellEnabled));
 }
 
+// Flip between the branded Toastmasters art and the logo-free flood background.
+// The timing behaviour is identical either way — only the artwork changes.
+export function toggleTheme() {
+  app.theme = app.theme === 'plain' ? DEFAULT_THEME : 'plain';
+  if (app.theme !== 'plain') ensureBackgrounds();
+  localStorage.setItem(LS.theme, app.theme);
+  syncThemeUI();
+}
+
+// The button reads as "branding on/off": pressed = Toastmasters art. The name
+// stays put (like the bell toggle) so aria-pressed is the only state signal.
+function syncThemeUI() {
+  const branded = app.theme !== 'plain';
+  btnTheme?.setAttribute('aria-pressed', String(branded));
+  stageWrap?.setAttribute(
+    'aria-label',
+    branded
+      ? 'Composited speaker view with Toastmasters timing background'
+      : 'Composited speaker view with plain timing background'
+  );
+}
+
 function openHelp() {
   if (setupGuide && !setupGuide.open) setupGuide.showModal();
 }
@@ -546,6 +591,9 @@ export function runKeyAction(action) {
       break;
     case 'bell':
       toggleBell();
+      break;
+    case 'theme':
+      toggleTheme();
       break;
     case 'help':
       openHelp();
@@ -581,6 +629,7 @@ cameraSelect?.addEventListener('change', () => {
 btnStartPause?.addEventListener('click', toggleStartPause);
 btnReset?.addEventListener('click', resetTimer);
 btnBell?.addEventListener('click', toggleBell);
+btnTheme?.addEventListener('click', toggleTheme);
 btnHelp?.addEventListener('click', openHelp);
 
 document.addEventListener('keydown', (e) => {
@@ -604,20 +653,13 @@ setStartPauseLabel();
 updateClockDom();
 updateStateLabelDom('start', false);
 btnBell?.setAttribute('aria-pressed', String(app.bellEnabled));
+syncThemeUI();
 
 // ---------- Boot ----------
 // Deferred IO: preload backgrounds, init segmenter, start camera, kick the loop,
 // and expose the captureStream/debug surface. Called from main.js in the browser.
 export async function init() {
-  await Promise.all(
-    STATES.map(async (s) => {
-      try {
-        bgImages[s] = await loadImage(BG_SRC[s]);
-      } catch (e) {
-        console.error(`Failed to load background ${s}`, e);
-      }
-    })
-  );
+  if (app.theme !== 'plain') await ensureBackgrounds();
 
   await initSegmenter();
   await listCameras();
@@ -641,6 +683,7 @@ export async function init() {
         mode: app.mode,
         elapsed: app.elapsed,
         preset: app.preset,
+        theme: app.theme,
         thresholds: thresholds(),
         bgState: app.lastBgState,
         overtime: isOvertime(app.elapsed, thresholds()),

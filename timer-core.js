@@ -28,6 +28,18 @@ const PRESET_LABELS = {
   custom: 'Custom',
 };
 
+// ---------- Themes ----------
+// 'toastmasters' composites onto the official branded backgrounds in images/.
+// 'plain' paints the same stoplight states procedurally — same colors, same
+// timing readouts, no Toastmasters logo or wordmark — so the timer can be used
+// outside a club meeting.
+export const THEMES = ['toastmasters', 'plain'];
+export const DEFAULT_THEME = 'toastmasters';
+
+export function isTheme(v) {
+  return THEMES.includes(v);
+}
+
 export function presetDisplayName(preset) {
   return PRESET_LABELS[preset] || PRESET_LABELS.custom;
 }
@@ -57,6 +69,30 @@ const CHIP_STYLE = {
   red: { bg: '#e0443e', ink: '#ffffff' },
 };
 
+// Plain-theme palette: one flood color per state, painted as a soft radial so the
+// frame has the same depth as the branded art without carrying any of its marks.
+// `glow` is the lit center, `base` the outer edge, `ink` the state label on top.
+const PLAIN_BG = {
+  start: { glow: '#2c3646', base: '#12161d', ink: 'rgba(255,255,255,0.82)' },
+  green: { glow: '#22a745', base: '#0f5f26', ink: 'rgba(255,255,255,0.92)' },
+  yellow: { glow: '#edc72c', base: '#a8860a', ink: 'rgba(36,31,0,0.86)' },
+  red: { glow: '#d6362f', base: '#821c18', ink: 'rgba(255,255,255,0.92)' },
+};
+
+// Inset frame drawn on the plain backgrounds, echoing the branded art's inner
+// border so the stage still reads as a composed frame rather than a flat fill.
+const PLAIN_FRAME = { inset: 40, width: 14 };
+
+// The branded backgrounds bake GREEN/YELLOW/RED into the art; the plain theme
+// draws the equivalent label itself. The neutral state has no color name, so it
+// reuses START — the same word the sidebar badge and stateLabel() use for it.
+const PLAIN_STATE_LABELS = {
+  start: 'START',
+  green: 'GREEN',
+  yellow: 'YELLOW',
+  red: 'RED',
+};
+
 const OVERTIME_MARGIN = 30; // grace seconds after red; overtime starts one second later
 const STAGE_W = 1920;
 const STAGE_H = 1080;
@@ -72,6 +108,7 @@ export const LS = {
   preset: 'tmtimer.preset',
   customTimes: 'tmtimer.customTimes',
   bell: 'tmtimer.bell',
+  theme: 'tmtimer.theme',
 };
 
 const MSS_REGEX = /^(\d+):([0-5]?\d)$/;
@@ -91,6 +128,8 @@ const KEY_ACTIONS = {
   B: 'bell',
   '?': 'help',
   '/': 'help',
+  l: 'theme',
+  L: 'theme',
 };
 
 // ---------- Time parsing / formatting ----------
@@ -166,6 +205,8 @@ export function readSettings(getItem) {
       }
     }
     out.bellEnabled = getItem(LS.bell) === '1';
+    const theme = getItem(LS.theme);
+    if (isTheme(theme)) out.theme = theme;
   } catch {
     /* corrupt storage -> fall back to defaults */
   }
@@ -478,18 +519,70 @@ export function drawTimingRules(ctx, opts) {
   ctx.restore();
 }
 
+// Paint one plain (logo-free) background: radial flood in the state's color, an
+// inset frame, and the state name in the top-left bar — the same information the
+// branded art bakes into its own image, minus the Toastmasters marks. Exported so
+// the video generator renders the identical frame.
+export function drawPlainBackground(ctx, state) {
+  const c = PLAIN_BG[state] || PLAIN_BG.start;
+
+  ctx.save();
+  const grad = ctx.createRadialGradient(
+    STAGE_W / 2,
+    STAGE_H * 0.42,
+    0,
+    STAGE_W / 2,
+    STAGE_H * 0.42,
+    STAGE_W * 0.62
+  );
+  grad.addColorStop(0, c.glow);
+  grad.addColorStop(1, c.base);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, STAGE_W, STAGE_H);
+
+  const { inset, width } = PLAIN_FRAME;
+  ctx.strokeStyle = 'rgba(0,0,0,0.22)';
+  ctx.lineWidth = width;
+  ctx.strokeRect(
+    inset + width / 2,
+    inset + width / 2,
+    STAGE_W - (inset + width / 2) * 2,
+    STAGE_H - (inset + width / 2) * 2
+  );
+
+  ctx.font = `700 34px ${UI_FONT}`;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = c.ink;
+  ctx.fillText(PLAIN_STATE_LABELS[state] || PLAIN_STATE_LABELS.start, 96, RULES_HEADER.centerY);
+  ctx.restore();
+}
+
 // Composite one full stage frame onto `ctx`. All inputs are passed in so this is
 // pure with respect to a recording-stub context:
-//   { images, mode, elapsed, thresholds, presetLabel, nowMs, videoReady, fgCanvas, personBox }
+//   { images, theme, mode, elapsed, thresholds, presetLabel, nowMs, videoReady,
+//     fgCanvas, personBox }
 export function renderStage(ctx, opts) {
-  const { images, mode, elapsed, thresholds, presetLabel, nowMs, videoReady, fgCanvas, personBox } =
-    opts;
+  const {
+    images,
+    theme = DEFAULT_THEME,
+    mode,
+    elapsed,
+    thresholds,
+    presetLabel,
+    nowMs,
+    videoReady,
+    fgCanvas,
+    personBox,
+  } = opts;
 
-  // Background
+  // Background — branded art, or the procedural logo-free flood.
   const state = mode === 'idle' ? 'start' : computeState(elapsed, thresholds);
-  const bg = images[state];
+  const bg = theme === 'plain' ? null : images[state];
   if (bg) {
     ctx.drawImage(bg, 0, 0, STAGE_W, STAGE_H);
+  } else if (theme === 'plain') {
+    drawPlainBackground(ctx, state);
   } else {
     ctx.fillStyle = '#222';
     ctx.fillRect(0, 0, STAGE_W, STAGE_H);

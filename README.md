@@ -1,6 +1,6 @@
 # Toastmasters Zoom Timer
 
-A browser-based speech timer for Toastmasters meetings on Zoom. Grant your webcam access, pick a speech preset, and the app composites you onto the official Toastmasters virtual background. While idle it shows your segmented webcam; once you start the timer the frame floods green, yellow, then red as your speech crosses each threshold, with a large countdown taking center stage in place of your video so the audience focuses on the time. Everything runs entirely in your browser: no installation, no server, and no file uploads. Your camera feed is processed locally and never leaves your machine; the only outbound requests are to fetch the MediaPipe segmentation runtime and model from public CDNs (jsDelivr and Google).
+A browser-based speech timer for Toastmasters meetings on Zoom. Grant your webcam access, pick a speech preset, and the app composites you onto the official Toastmasters virtual background. While idle it shows your segmented webcam; once you start the timer the frame floods green, yellow, then red as your speech crosses each threshold, with a large countdown taking center stage in place of your video so the audience focuses on the time. Not a Toastmasters meeting? Press <kbd>L</kbd> for the same timing and colors with no Toastmasters branding. Everything runs entirely in your browser: no installation, no server, and no file uploads. Your camera feed is processed locally and never leaves your machine; the only outbound requests are to fetch the MediaPipe segmentation runtime and model from public CDNs (jsDelivr and Google).
 
 **Two ways to use it:** run the live web app (below), or skip the setup entirely and [download a ready-made timer video](#zoom-virtual-background-videos-no-setup) to drop straight into Zoom as a virtual background.
 
@@ -87,6 +87,7 @@ This path is lower quality than the OBS route but requires no additional softwar
 | R     | Reset                         |
 | H     | Toggle controls (presenter mode) |
 | B     | Toggle bell                   |
+| L     | Toggle Toastmasters branding  |
 | ?     | Open setup guide              |
 | 1–5   | Jump to preset                |
 
@@ -107,6 +108,27 @@ Custom thresholds are editable in the sidebar and saved across sessions via `loc
 
 ---
 
+## Using It Outside Toastmasters
+
+The stoplight timing works anywhere — conference talks, classroom presentations,
+job-interview panels. Press <kbd>L</kbd> (or click **Logo** in the sidebar) to
+swap the official Toastmasters art for a plain background: the same green /
+yellow / red flood, the same big countdown, the same timing-rules header, with
+no logo or wordmark. The choice is remembered across sessions in `localStorage`.
+
+Logo-free versions of every virtual-background video are on the same
+[release page](https://github.com/rlorenzo/toastmasters-zoom-timer/releases/tag/timer-videos),
+named `timer-<speech>-<layout>.mp4` — for example `timer-prepared-center.mp4`
+(the branded ones are `tm-timer-…`).
+
+To render your own with your own timings:
+
+```bash
+node tools/generate-bg-video.mjs --theme=plain --green=3:00 --yellow=4:00 --red=5:00
+```
+
+---
+
 ## Browser Support
 
 | Browser          | Notes                                           |
@@ -120,7 +142,7 @@ Custom thresholds are editable in the sidebar and saved across sessions via `loc
 
 ## How It Works
 
-While idle, MediaPipe SelfieSegmenter runs entirely in-browser (GPU-accelerated via WebGPU where available, WebGL2 otherwise) to separate you from your background; the compositor draws the neutral Toastmasters background onto a `<canvas>` and layers your segmented silhouette in the centered speaker zone. Once timing starts the speaker zone is taken over by a large countdown instead of your video, and the background image is swapped as elapsed time crosses each preset threshold — neutral to green, green to yellow, yellow to red — flooding the whole frame with the state color. `canvas.captureStream()` exposes the composite as a `MediaStream` for direct OBS Browser Source routing.
+While idle, MediaPipe SelfieSegmenter runs entirely in-browser (GPU-accelerated via WebGPU where available, WebGL2 otherwise) to separate you from your background; the compositor draws the neutral Toastmasters background onto a `<canvas>` and layers your segmented silhouette in the centered speaker zone. Once timing starts the speaker zone is taken over by a large countdown instead of your video, and the background image is swapped as elapsed time crosses each preset threshold — neutral to green, green to yellow, yellow to red — flooding the whole frame with the state color. `canvas.captureStream()` exposes the composite as a `MediaStream` for direct OBS Browser Source routing. In logo-free mode the background images are skipped entirely and each state is painted as a radial flood of its own color with the state name in the top bar.
 
 ---
 
@@ -133,7 +155,7 @@ The four background images included in this repository under `images/` —
 - `images/toastmasters-zoom-virtual-logo-bk-timer-yellow-1920x1080.jpg`
 - `images/toastmasters-zoom-virtual-logo-bk-timer-red-1920x1080.jpg`
 
-— are official Toastmasters International materials and are included here solely for use within Toastmasters club meetings.
+— are official Toastmasters International materials and are included here solely for use within Toastmasters club meetings. Outside a club meeting, use the logo-free mode (<kbd>L</kbd>, or `--theme=plain` for the videos), which paints its backgrounds procedurally and touches none of these assets.
 
 ---
 
@@ -163,9 +185,10 @@ node tools/generate-bg-video.mjs            # both layouts, default preset -> di
 node tools/generate-bg-video.mjs all        # both layouts, every preset
 node tools/generate-bg-video.mjs prepared --layout=center
 node tools/generate-bg-video.mjs --green=1:00 --yellow=1:30 --red=2:00   # custom times
+node tools/generate-bg-video.mjs all --theme=plain                      # logo-free set
 ```
 
-Requires ffmpeg on your `PATH` (`brew install ffmpeg`). Output lands in `dist/` (gitignored); the workflow uploads it to the release with `--clobber`, so only the current set is ever stored. The bundled fonts (`fonts/montserrat-bold.ttf`, `fonts/dejavu-sans-mono-bold.ttf`) keep the render identical on any machine.
+Requires ffmpeg on your `PATH` (`brew install ffmpeg`). `--theme=plain` renders the logo-free variant (`timer-*.mp4`) instead of the branded one (`tm-timer-*.mp4`); CI publishes both sets. Output lands in `dist/` (gitignored); the workflow uploads it to the release with `--clobber`, so only the current set is ever stored. The bundled fonts (`fonts/montserrat-bold.ttf`, `fonts/dejavu-sans-mono-bold.ttf`) keep the render identical on any machine.
 
 ### Toolchain
 

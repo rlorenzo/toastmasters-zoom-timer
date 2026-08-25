@@ -17,27 +17,8 @@
       crossorigin
     />
 
-    <!-- Preload all four virtual backgrounds for flicker-free transitions -->
-    <link
-      rel="preload"
-      as="image"
-      href="./images/toastmasters-zoom-virtual-logo-bk-1920x1080.jpg"
-    />
-    <link
-      rel="preload"
-      as="image"
-      href="./images/toastmasters-zoom-virtual-logo-bk-timer-green-1920x1080.jpg"
-    />
-    <link
-      rel="preload"
-      as="image"
-      href="./images/toastmasters-zoom-virtual-logo-bk-timer-yellow-1920x1080.jpg"
-    />
-    <link
-      rel="preload"
-      as="image"
-      href="./images/toastmasters-zoom-virtual-logo-bk-timer-red-1920x1080.jpg"
-    />
+    <!-- The four virtual backgrounds are fetched by app.js instead of preloaded
+         here, so logo-free mode never downloads the branded art at all. -->
 
     <link rel="stylesheet" href="./styles.css" />
 
@@ -180,6 +161,20 @@
           <span class="btn-icon-glyph" aria-hidden="true">&#128276;</span>
           <span class="btn-label">Bell</span>
           <kbd aria-hidden="true">B</kbd>
+        </button>
+
+        <!-- Branding toggle: pressed = official Toastmasters art, unpressed =
+             logo-free flood background for non-Toastmasters meetings -->
+        <button
+          type="button"
+          id="btn-theme"
+          class="btn btn-icon"
+          aria-label="Toggle Toastmasters branding (L)"
+          aria-pressed="true"
+        >
+          <span class="btn-icon-glyph" aria-hidden="true">&#127912;</span>
+          <span class="btn-label">Logo</span>
+          <kbd aria-hidden="true">L</kbd>
         </button>
       </div>
 

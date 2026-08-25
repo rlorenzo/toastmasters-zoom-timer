@@ -26,9 +26,9 @@ concurrency:
 jobs:
   release-videos:
     runs-on: ubuntu-latest
-    # Generous ceiling: streamed rendering finishes in a few minutes; this just
-    # caps a future hang.
-    timeout-minutes: 20
+    # Generous ceiling: streamed rendering finishes in a few minutes per theme,
+    # and there are two of them; this just caps a future hang.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
@@ -48,8 +48,14 @@ jobs:
       - name: Install ffmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
-      - name: Generate all videos
+      # Two sets, kept as separate steps so a slow or failing render says which
+      # theme it was: the branded Toastmasters art (tm-timer-*) and the logo-free
+      # flood backgrounds (timer-*) for non-Toastmasters meetings.
+      - name: Generate all videos (Toastmasters art)
         run: node tools/generate-bg-video.mjs all
+
+      - name: Generate all videos (logo-free)
+        run: node tools/generate-bg-video.mjs all --theme=plain
 
       # Publish to a single fixed-tag release and overwrite same-named assets, so
       # only the current set is ever stored (no old-version clutter, no git bloat
@@ -66,7 +72,7 @@ jobs:
           # thing on the page that actually moves, so write it on every run.
           notes="$RUNNER_TEMP/notes.md"
           {
-            echo "Auto-generated Zoom virtual-background timer videos, refreshed on every relevant change to main. Two layouts per speech type: \`-corner\` (keep your webcam on) and \`-center\` (webcam off, big timer)."
+            echo "Auto-generated Zoom virtual-background timer videos, refreshed on every relevant change to main. Two layouts per speech type: \`-corner\` (keep your webcam on) and \`-center\` (webcam off, big timer). \`tm-timer-*\` carries the Toastmasters art; \`timer-*\` is the same timing with no logo, for non-Toastmasters use."
             echo
             echo "Rendered from ${GITHUB_SHA} on $(date -u +'%Y-%m-%d %H:%M UTC')."
           } > "$notes"
@@ -74,5 +80,5 @@ jobs:
           gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" \
             --title "Toastmasters timer virtual backgrounds" \
             --notes-file "$notes"
-          gh release upload "$tag" dist/tm-timer-*.mp4 --clobber
+          gh release upload "$tag" dist/tm-timer-*.mp4 dist/timer-*.mp4 --clobber
           gh release edit "$tag" --notes-file "$notes"

@@ -19,8 +19,12 @@
 //   node tools/generate-bg-video.mjs prepared --layout=center
 //   node tools/generate-bg-video.mjs --green=1:00 --yellow=1:30 --red=2:00
 //
-// Flags: --layout=corner|center (default: both), --tail=SEC (overtime after red,
-// default 60), --fps=N (default 15), --out=DIR (default dist/).
+//   node tools/generate-bg-video.mjs all --theme=plain  # logo-free, every preset
+//
+// Flags: --layout=corner|center (default: both), --theme=toastmasters|plain
+// (default toastmasters; plain drops the logo and paints the flood color itself,
+// for non-Toastmasters use), --tail=SEC (overtime after red, default 60),
+// --fps=N (default 15), --out=DIR (default dist/).
 
 import { spawn } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
@@ -30,14 +34,18 @@ import { createCanvas, GlobalFonts, loadImage } from '@napi-rs/canvas';
 import {
   computeState,
   DEFAULT_PRESET,
+  DEFAULT_THEME,
   drawBigTimer,
+  drawPlainBackground,
   drawTimingRules,
   formatTime,
   isOvertime,
+  isTheme,
   PRESET_KEYS,
   PRESETS,
   parseTime,
   presetDisplayName,
+  THEMES,
   TIMER_ZONE,
 } from '../timer-core.js';
 
@@ -72,6 +80,10 @@ const ZONES = {
 };
 const LAYOUTS = ['corner', 'center'];
 
+// File prefix per theme, so a branded and an unbranded render of the same preset
+// and layout never overwrite each other in dist/ or on the release.
+const THEME_PREFIX = { toastmasters: 'tm-timer', plain: 'timer' };
+
 // Any ffmpeg encodes the baked frames; the slim Homebrew build is fine since no
 // text filter is involved.
 const FFMPEG = 'ffmpeg';
@@ -81,11 +93,16 @@ const ARG_RE = /^--([^=]+)(?:=(.*))?$/;
 // ---------- Pure helpers (unit tested) ----------
 
 function defaultOpts() {
-  return { tail: 60, fps: 15, outDir: join(ROOT, 'dist'), layout: null };
+  return { tail: 60, fps: 15, outDir: join(ROOT, 'dist'), layout: null, theme: DEFAULT_THEME };
 }
 
 function validLayout(v) {
   if (!LAYOUTS.includes(v)) throw new Error(`--layout must be ${LAYOUTS.join('|')}.`);
+  return v;
+}
+
+function validTheme(v) {
+  if (!isTheme(v)) throw new Error(`--theme must be ${THEMES.join('|')}.`);
   return v;
 }
 
@@ -118,6 +135,9 @@ const FLAG_SETTERS = {
   },
   layout: (p, v) => {
     p.opts.layout = validLayout(v);
+  },
+  theme: (p, v) => {
+    p.opts.theme = validTheme(v);
   },
   green: (p, v) => {
     p.custom.green = time('green', v);
@@ -179,6 +199,11 @@ export function timerZone(layout) {
   return ZONES[layout];
 }
 
+// Output filename for one render — themed prefix so both sets can coexist.
+export function outFileName(theme, name, layout) {
+  return `${THEME_PREFIX[theme]}-${name}-${layout}.mp4`;
+}
+
 // Total length in seconds: up to red plus the overtime tail.
 export function totalSeconds(th, tail) {
   return th.red + tail;
@@ -191,7 +216,10 @@ function registerFonts() {
   GlobalFonts.registerFromPath(MONO, 'Menlo');
 }
 
-async function loadBackgrounds() {
+// The plain theme paints its backgrounds procedurally, so there is nothing to
+// load; only the branded theme needs the JPEGs.
+async function loadBackgrounds(theme) {
+  if (theme === 'plain') return {};
   const out = {};
   for (const [state, src] of Object.entries(IMAGES)) {
     out[state] = await loadImage(join(ROOT, src));
@@ -201,9 +229,10 @@ async function loadBackgrounds() {
 
 // Compose one frame: flood background for the current state, the timing-rules
 // header, and the timer sized to the layout's zone.
-function renderFrame(ctx, { bgImages, zone, elapsed, thresholds, label }) {
-  const bg = bgImages[computeState(elapsed, thresholds)];
-  ctx.drawImage(bg, 0, 0, W, H);
+function renderFrame(ctx, { bgImages, theme, zone, elapsed, thresholds, label }) {
+  const state = computeState(elapsed, thresholds);
+  if (theme === 'plain') drawPlainBackground(ctx, state);
+  else ctx.drawImage(bgImages[state], 0, 0, W, H);
   drawTimingRules(ctx, { label, thresholds });
   drawBigTimer(ctx, zone, formatTime(elapsed), isOvertime(elapsed, thresholds));
 }
@@ -288,14 +317,14 @@ async function generate(ff, name, th, layout, opts, bgImages) {
   const label = presetDisplayName(name);
   const canvas = createCanvas(W, H);
   const ctx = canvas.getContext('2d');
-  const outFile = join(opts.outDir, `tm-timer-${name}-${layout}.mp4`);
+  const outFile = join(opts.outDir, outFileName(opts.theme, name, layout));
 
   // One frame per second (the readout changes once a second); ffmpeg holds each
   // for a second and resamples to the output fps. getImageData is spec RGBA, which
   // matches the encoder's -pix_fmt rgba exactly.
   const { ffmpeg, closed } = spawnEncoder(ff, opts.fps, outFile);
   for (let elapsed = 0; elapsed < total; elapsed++) {
-    renderFrame(ctx, { bgImages, zone, elapsed, thresholds: th, label });
+    renderFrame(ctx, { bgImages, theme: opts.theme, zone, elapsed, thresholds: th, label });
     // Slice via the view's own offset/length so it stays correct even if the
     // canvas ever returns a view into a larger buffer.
     const { data } = ctx.getImageData(0, 0, W, H);
@@ -320,7 +349,7 @@ async function main() {
   const wantLayouts = resolveLayouts(opts);
   mkdirSync(opts.outDir, { recursive: true });
   registerFonts();
-  const bgImages = await loadBackgrounds();
+  const bgImages = await loadBackgrounds(opts.theme);
 
   for (const [name, th] of jobs) {
     for (const layout of wantLayouts) {

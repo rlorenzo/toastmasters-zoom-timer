@@ -26,8 +26,12 @@ function makeCtxStub() {
     'fillText',
     'clearRect',
     'putImageData',
+    'strokeRect',
   ];
   for (const m of noops) ctx[m] = () => {};
+  // The plain theme paints a radial flood; the stub gradient just has to accept
+  // color stops and be assignable to fillStyle.
+  ctx.createRadialGradient = () => ({ addColorStop: () => {} });
   return ctx;
 }
 HTMLCanvasElement.prototype.getContext = () => makeCtxStub();
@@ -39,13 +43,14 @@ HTMLCanvasElement.prototype.getContext = () => makeCtxStub();
 // the bound references stay valid.
 document.body.innerHTML = `
   <video id="video-source"></video>
-  <canvas id="stage"></canvas>
+  <div id="stage-wrap"><canvas id="stage"></canvas></div>
   <dialog id="setup-guide"></dialog>
   <aside id="sidebar"></aside>
   <button id="btn-start-pause"><span class="btn-label">Start</span></button>
   <button id="btn-reset"></button>
   <button id="btn-bell"></button>
   <button id="btn-help"></button>
+  <button id="btn-theme"></button>
   <select id="camera-select"></select>
   <select id="preset-select">
     <option value="table-topics"></option>
