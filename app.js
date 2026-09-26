@@ -266,11 +266,18 @@ export async function startCamera(deviceId) {
 }
 
 // ---------- Segmentation ----------
-const TASKS_VISION_URL =
-  'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10/vision_bundle.mjs';
+// Pinned to exact versions (not the floating @0.10 / latest paths) so a new
+// CDN or npm publish can't change what runs in this page. Bump both the
+// package version below and the model path together; see README.
+// Browser support for CSP path scoping varies, so these exact-version URLs
+// are the primary pin; the CSP in index.html mirrors the same versioned
+// jsdelivr path across script/connect/worker/child-src as defense in depth.
+const MEDIAPIPE_VERSION = '0.10.35';
+const MEDIAPIPE_PKG = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}`;
+const TASKS_VISION_URL = `${MEDIAPIPE_PKG}/vision_bundle.mjs`;
 const MODEL_URL =
-  'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/latest/selfie_multiclass_256x256.tflite';
-const WASM_BASE = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10/wasm';
+  'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/1/selfie_multiclass_256x256.tflite';
+const WASM_BASE = `${MEDIAPIPE_PKG}/wasm`;
 
 async function initSegmenter() {
   try {

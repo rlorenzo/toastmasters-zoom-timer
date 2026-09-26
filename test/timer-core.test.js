@@ -171,6 +171,14 @@ describe('readSettings', () => {
     const s = readSettings(store({ 'tmtimer.customTimes': '{not json' }));
     expect(s.customTimes).toBeUndefined();
   });
+  it('rejects hand-edited custom times that violate green < yellow < red', () => {
+    const s = readSettings(
+      store({
+        'tmtimer.customTimes': JSON.stringify({ green: 120, yellow: 90, red: 60 }),
+      })
+    );
+    expect(s.customTimes).toBeUndefined();
+  });
 });
 
 describe('bellForTransition', () => {
