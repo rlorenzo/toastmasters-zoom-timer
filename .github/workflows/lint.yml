@@ -34,4 +34,6 @@ jobs:
       # in CI's detached checkout, so pass it explicitly.
       - name: Complexity/CRAP gate
         if: github.event_name == 'pull_request'
-        run: npx fallow audit --gate new-only --coverage coverage/coverage-final.json --base "origin/${{ github.base_ref }}"
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: npx fallow audit --gate new-only --coverage coverage/coverage-final.json --base "origin/$BASE_REF"
