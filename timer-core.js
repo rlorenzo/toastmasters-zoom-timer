@@ -169,19 +169,26 @@ export function isOvertime(elapsed, thresholds) {
 }
 
 // ---------- Settings ----------
+// Shared threshold check used for both form input (parsed from "m:ss" strings)
+// and persisted settings (already numbers from JSON): finite, non-negative,
+// and strictly increasing green < yellow < red.
+function validateThresholdValues(green, yellow, red) {
+  if (!Number.isFinite(green) || !Number.isFinite(yellow) || !Number.isFinite(red)) {
+    return { ok: false, error: 'Use m:ss (e.g. 1:30).' };
+  }
+  if (!(green >= 0 && green < yellow && yellow < red)) {
+    return { ok: false, error: 'Green < Yellow < Red.' };
+  }
+  return { ok: true, value: { green, yellow, red } };
+}
+
 // Validate three "m:ss" custom-threshold strings. Returns the parsed seconds on
 // success, or an error message describing the first problem.
 export function validateCustomTimes(greenStr, yellowStr, redStr) {
   const green = parseTime(greenStr || '');
   const yellow = parseTime(yellowStr || '');
   const red = parseTime(redStr || '');
-  if (!Number.isFinite(green) || !Number.isFinite(yellow) || !Number.isFinite(red)) {
-    return { ok: false, error: 'Use m:ss (e.g. 1:30).' };
-  }
-  if (!(green < yellow && yellow < red)) {
-    return { ok: false, error: 'Green < Yellow < Red.' };
-  }
-  return { ok: true, value: { green, yellow, red } };
+  return validateThresholdValues(green, yellow, red);
 }
 
 // Read and validate persisted settings from a `getItem(key) -> string|null`
@@ -195,13 +202,9 @@ export function readSettings(getItem) {
     const rawCustom = getItem(LS.customTimes);
     if (rawCustom) {
       const parsed = JSON.parse(rawCustom);
-      if (
-        parsed &&
-        Number.isFinite(parsed.green) &&
-        Number.isFinite(parsed.yellow) &&
-        Number.isFinite(parsed.red)
-      ) {
-        out.customTimes = parsed;
+      if (parsed) {
+        const result = validateThresholdValues(parsed.green, parsed.yellow, parsed.red);
+        if (result.ok) out.customTimes = result.value;
       }
     }
     out.bellEnabled = getItem(LS.bell) === '1';
