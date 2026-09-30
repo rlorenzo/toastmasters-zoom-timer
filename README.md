@@ -196,10 +196,10 @@ Requires ffmpeg on your `PATH` (`brew install ffmpeg`). `--theme=plain` renders 
 
 | Tool                                                                 | Covers                                                                          | Config                       |
 |----------------------------------------------------------------------|---------------------------------------------------------------------------------|------------------------------|
-| [Biome](https://biomejs.dev)                                         | JS, CSS, HTML, JSON — format + lint                                             | `biome.json`                 |
+| [Vite+](https://viteplus.dev) (`vp`: Oxlint + Oxfmt)                 | JS, CSS, HTML, JSON — format + lint                                             | `vite.config.ts`             |
 | [markdownlint-cli2](https://github.com/DavidAnson/markdownlint-cli2) | Markdown — lint + auto-fix                                                      | `.markdownlint-cli2.jsonc`   |
 | [fallow](https://fallow.tools)                                       | JS project-graph analysis: dead code, dep hygiene, circular deps, duplication    | `.fallowrc.jsonc`            |
-| [Vitest](https://vitest.dev) + jsdom                                 | Unit tests + Istanbul coverage (feeds fallow's CRAP scoring)                    | `vitest.config.js`           |
+| Vite+ test (Vitest) + jsdom                                          | Unit tests + Istanbul coverage (feeds fallow's CRAP scoring)                    | `vite.config.ts`             |
 | [ShellCheck](https://www.shellcheck.net)                             | Shell script static analysis                                                    | (none); system binary        |
 
 ShellCheck is the one tool not installed via npm. Install it with your system
@@ -210,9 +210,9 @@ your `PATH`.
 ### Commands
 
 ```bash
-npm install        # one-time setup; also installs the Husky pre-commit hook
+npm install        # one-time setup; also installs the Vite+ pre-commit hook
 
-npm run lint       # static linters (biome + markdown + shellcheck + fallow dead-code/dupes)
+npm run lint       # static linters (oxlint/oxfmt + markdown + shellcheck + fallow dead-code/dupes)
 npm test           # run the Vitest unit suite
 npm run coverage   # Vitest with Istanbul coverage -> coverage/coverage-final.json
 npm run health     # full fallow health report (complexity/CRAP), advisory
@@ -221,7 +221,7 @@ npm run health:gate # coverage + fallow audit; the CI complexity/CRAP gate
 npm run fix        # apply auto-fixes everywhere
 npm run fmt        # format only (no lint)
 
-npm run lint:web      # just biome
+npm run lint:web      # just oxlint + oxfmt check (vp check)
 npm run lint:md       # just markdown
 npm run lint:sh       # just shellcheck
 npm run lint:fallow   # fallow dead-code + duplication
@@ -235,16 +235,16 @@ thresholds). `npm run health` prints the full advisory report.
 
 ### Pre-commit hook
 
-`npm install` wires up a Husky pre-commit hook that runs `lint-staged` against
-only the files you have staged:
+`npm install` wires up a Vite+ pre-commit hook (`.vite-hooks/pre-commit`) that runs
+`vp staged` against only the files you have staged:
 
 | Staged files                     | Tool                      | Behavior               |
 |----------------------------------|---------------------------|------------------------|
-| `*.{js,mjs,css,html,json,jsonc}` | `biome check --write`     | Auto-fixes & re-stages |
+| `*.{js,mjs,css,html,json,jsonc}` | `vp check --fix`          | Auto-fixes & re-stages |
 | `*.md`                           | `markdownlint-cli2 --fix` | Auto-fixes & re-stages |
 | `*.sh`                           | `shellcheck`              | Check only             |
 
-After `lint-staged`, the hook also runs `npm run lint:fallow` (fallow's
+After `vp staged`, the hook also runs `npm run lint:fallow` (fallow's
 dead-code + duplication analysis, ~0.5s). It is project-wide rather than
 per-staged-file, so it runs as its own step. The coverage-driven complexity/CRAP
 gate stays in CI since it needs the test run.

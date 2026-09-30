@@ -7,37 +7,32 @@
   "scripts": {
     "serve": "./serve.sh",
     "lint": "npm run lint:web && npm run lint:md && npm run lint:sh && npm run lint:fallow",
-    "lint:web": "biome check .",
+    "lint:web": "vp check",
     "lint:md": "markdownlint-cli2 \"**/*.md\" \"#node_modules\"",
     "lint:sh": "shellcheck serve.sh",
     "lint:fallow": "fallow --skip health",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "coverage": "vitest run --coverage",
+    "test": "vp test run",
+    "test:watch": "vp test",
+    "coverage": "vp test run --coverage",
     "health": "npm run coverage && fallow health --coverage coverage/coverage-final.json --report-only",
     "health:gate": "npm run coverage && fallow audit --gate new-only --coverage coverage/coverage-final.json",
-    "fmt": "biome format --write . && markdownlint-cli2 --fix \"**/*.md\" \"#node_modules\"",
-    "fix": "biome check --write . && markdownlint-cli2 --fix \"**/*.md\" \"#node_modules\"",
-    "prepare": "husky"
-  },
-  "lint-staged": {
-    "*.{js,mjs,css,html,json,jsonc}": "biome check --write --no-errors-on-unmatched",
-    "*.md": "markdownlint-cli2 --fix",
-    "*.sh": "shellcheck"
+    "fmt": "vp fmt && markdownlint-cli2 --fix \"**/*.md\" \"#node_modules\"",
+    "fix": "vp check --fix && markdownlint-cli2 --fix \"**/*.md\" \"#node_modules\"",
+    "prepare": "vp config"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.16",
     "@napi-rs/canvas": "^1.0.1",
-    "@vitest/coverage-istanbul": "^4.1.8",
+    "@vitest/coverage-istanbul": "5.0.1",
     "fallow": "^2.89.0",
-    "husky": "^9.1.7",
     "jsdom": "^29.1.1",
-    "lint-staged": "^17.0.7",
     "markdownlint-cli2": "^0.22.1",
-    "vitest": "^4.1.8"
+    "vite-plus": "1.0.0",
+    "vitest": "5.0.1"
   },
   "overrides": {
     "js-yaml": "4.3.1",
-    "markdown-it": "14.2.0"
+    "markdown-it": "14.2.0",
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.0.0",
+    "vitest": "5.0.1"
   }
 }
