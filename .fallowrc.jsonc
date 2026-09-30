@@ -2,8 +2,9 @@
   "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
   // main.js is the browser entry (index.html loads it; fallow doesn't parse HTML).
   // The test files are entries too so functions exported from app.js solely for
-  // unit testing count as used rather than dead.
-  "entry": ["main.js", "test/**/*.test.js"],
+  // unit testing count as used rather than dead. test/setup.js is the Vitest
+  // setupFiles entry in vite.config.ts, which fallow does not detect.
+  "entry": ["main.js", "test/**/*.test.js", "test/setup.js"],
   // Fallow analyzes JS/TS module graphs. styles.css is referenced from index.html
   // (which fallow doesn't parse), so without an explicit ignore it gets flagged as
   // an unused file. coverage/ holds generated Istanbul output.
