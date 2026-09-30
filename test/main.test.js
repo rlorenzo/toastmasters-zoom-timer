@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vite-plus/test';
 
 // main.js is the thin browser entry: it imports init() and calls it. Mock app.js
 // so importing main.js exercises the boot call without firing real camera/IO.

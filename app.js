@@ -429,7 +429,7 @@ export async function frameStep(nowMs, metadata) {
   if (app.mode === 'idle' && videoEl.readyState >= 2 && !videoEl.paused && !videoEl.ended) {
     try {
       await segmentFrame(videoEl, metadata?.mediaTime ? metadata.mediaTime * 1000 : nowMs);
-    } catch (_e) {
+    } catch {
       /* keep last frame on transient error */
     }
   }
