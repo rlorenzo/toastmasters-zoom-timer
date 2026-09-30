@@ -11,7 +11,7 @@
   "duplicates": {
     // Hide pair-only clones; focus on widespread copy-paste
     // worth refactoring. Lower to 2 to report every duplicate pair.
-    "minOccurrences": 3
+    "minOccurrences": 3,
     // Common additions (uncomment to enable):
     // "ignore": [
     //   "**/lib/**",          // for repos that publish transpiled output to lib/
@@ -20,5 +20,5 @@
     //   "**/generated/**"     // OpenAPI, Protobuf codegen
     // ]
   },
-  "rules": {}
+  "rules": {},
 }

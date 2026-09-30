@@ -7,18 +7,18 @@
 /* ── Self-hosted brand typefaces (latin subset, variable) ─── */
 /* Kept local so no third-party font requests are made at runtime. */
 @font-face {
-  font-family: "Montserrat";
+  font-family: 'Montserrat';
   font-style: normal;
   font-weight: 500 800;
   font-display: swap;
-  src: url("./fonts/montserrat.woff2") format("woff2");
+  src: url('./fonts/montserrat.woff2') format('woff2');
 }
 @font-face {
-  font-family: "Source Sans 3";
+  font-family: 'Source Sans 3';
   font-style: normal;
   font-weight: 400 700;
   font-display: swap;
-  src: url("./fonts/source-sans-3.woff2") format("woff2");
+  src: url('./fonts/source-sans-3.woff2') format('woff2');
 }
 
 /* ── Custom properties ───────────────────────────────────── */
@@ -62,9 +62,9 @@
   --sidebar-gap: 12px;
 
   /* Type */
-  --font-ui: "Source Sans 3", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
-  --font-display: "Montserrat", "Source Sans 3", -apple-system, "Segoe UI", Arial, sans-serif;
-  --font-mono: "SF Mono", "Fira Code", "Cascadia Code", ui-monospace, monospace;
+  --font-ui: 'Source Sans 3', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+  --font-display: 'Montserrat', 'Source Sans 3', -apple-system, 'Segoe UI', Arial, sans-serif;
+  --font-mono: 'SF Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
 
   /* Motion */
   --duration-fast: 120ms;
@@ -127,7 +127,7 @@ body {
 
 /* Overtime pulse overlay — sits above canvas but below sidebar */
 #stage-wrap::after {
-  content: "";
+  content: '';
   position: absolute;
   inset: 0;
   border-radius: 0;
@@ -307,18 +307,18 @@ body.stage-clean {
 }
 
 /* State badge colouring — toggled by JS adding a data attribute or class */
-#state-label-html[data-state="green"] {
+#state-label-html[data-state='green'] {
   background: rgba(52, 208, 88, 0.18);
   color: var(--color-green);
 }
 
-#state-label-html[data-state="yellow"] {
+#state-label-html[data-state='yellow'] {
   background: rgba(242, 223, 116, 0.18);
   color: var(--color-yellow);
 }
 
-#state-label-html[data-state="red"],
-#state-label-html[data-state="overtime"] {
+#state-label-html[data-state='red'],
+#state-label-html[data-state='overtime'] {
   background: rgba(240, 82, 82, 0.18);
   color: var(--color-red);
 }
@@ -339,7 +339,7 @@ body.stage-clean {
 }
 
 select,
-input[type="text"] {
+input[type='text'] {
   appearance: none;
   -webkit-appearance: none;
   width: 100%;
@@ -367,12 +367,12 @@ select {
 }
 
 select:hover,
-input[type="text"]:hover {
+input[type='text']:hover {
   border-color: var(--color-border-strong);
 }
 
 select:focus,
-input[type="text"]:focus {
+input[type='text']:focus {
   border-color: var(--color-accent);
   box-shadow: 0 0 0 3px var(--color-accent-glow);
 }
@@ -420,7 +420,7 @@ select option {
   flex-shrink: 0;
 }
 
-.custom-field input[type="text"] {
+.custom-field input[type='text'] {
   flex: 1;
   padding: 5px 8px;
   font-family: var(--font-mono);
@@ -551,7 +551,7 @@ kbd {
 }
 
 /* Pressed / active toggle state */
-.btn-icon[aria-pressed="true"] {
+.btn-icon[aria-pressed='true'] {
   background: rgba(242, 223, 116, 0.14);
   border-color: rgba(242, 223, 116, 0.4);
   color: var(--color-accent);
